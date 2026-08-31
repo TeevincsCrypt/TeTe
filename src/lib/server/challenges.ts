@@ -1,8 +1,16 @@
 import 'server-only';
 
-import { canTransition, fundingState, resolveReports, pot, type Challenge, type Side } from '@/lib/escrow/types';
+import {
+  canTransition,
+  fundingMemo,
+  fundingState,
+  resolveReports,
+  pot,
+  type Challenge,
+  type Side,
+} from '@/lib/escrow/types';
 import { TREASURY_ADDRESS } from './env';
-import { findFunding, fundingMemo, payout } from './treasury';
+import { findFunding, payout } from './treasury';
 import { get, list, push, set } from './store';
 
 /**
@@ -167,4 +175,3 @@ export async function reportResult(id: string, address: string, winner: Side): P
   }
 }
 
-export { fundingMemo };

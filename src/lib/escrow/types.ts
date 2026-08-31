@@ -78,6 +78,12 @@ export interface Challenge {
 }
 
 /** The pot, before fees. Both players stake the same. */
+/** The exact memo a funding transaction must carry to be counted. */
+export function fundingMemo(challengeId: string): string {
+  return `tete:${challengeId}`;
+}
+
+/** The pot, before fees. Both players stake the same. */
 export function pot(challenge: Challenge): number {
   return challenge.stake * 2;
 }

@@ -20,10 +20,21 @@ import { useLocalProfile } from '@/state/use-local-profile';
 import { CHALLENGE_FORMATS, type ChallengeFormatId, type OpponentMode } from '@/lib/challenges/types';
 import { createId } from '@/lib/ids';
 import { compactAddress } from '@/lib/nimiq/address';
+import { nimToLuna } from '@/lib/nimiq/units';
 import type { RosterPlayer } from '@/lib/roster/roster';
 import { useMiniApp } from '@/state/mini-app-provider';
-import { ApiError, lookupPlayer } from '@/lib/api/client';
+import { ApiError, backendReady, createChallenge, lookupPlayer } from '@/lib/api/client';
 import type { StakeCurrency } from '@/types';
+
+/**
+ * Convert a stake typed in the create form to the smallest unit the API
+ * stores. NIM maps to real Luna, the unit the chain uses. USDT has no working
+ * on-chain verification yet (see the funding screen), so its "smallest unit"
+ * here is just cents, kept only for consistent display until that exists.
+ */
+function toSmallestUnit(currency: StakeCurrency, value: number): number {
+  return currency === 'NIM' ? nimToLuna(value) : Math.round(value * 100);
+}
 
 const QUICK_STAKES: Record<StakeCurrency, readonly number[]> = {
   NIM: [50, 100, 500, 1000],
@@ -62,7 +73,20 @@ function CreateFlow() {
   const [opponentMode, setOpponentMode] = useState<OpponentMode>('open');
   const [rival, setRival] = useState<RosterPlayer | null>(null);
   const [note, setNote] = useState('');
-  const [saved, setSaved] = useState<string | null>(null);
+  const [saved, setSaved] = useState<{ link: string; path: string | null } | null>(null);
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
+
+  const [backend, setBackend] = useState<'checking' | 'ready' | 'unavailable'>('checking');
+  useEffect(() => {
+    let cancelled = false;
+    backendReady().then((ready) => {
+      if (!cancelled) setBackend(ready ? 'ready' : 'unavailable');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const stakeValue = Number.parseFloat(stake);
   const stakeValid = Number.isFinite(stakeValue) && stakeValue > 0;
@@ -70,9 +94,36 @@ function CreateFlow() {
   const formatValid = format !== null && (format !== 'custom' || customTitle.trim().length > 0);
 
   const canContinue = [formatValid, stakeValid, opponentValid][step] ?? false;
+  // Posting for real needs a live backend and a connected wallet to sign
+  // with — either missing, and the challenge is saved as a local draft instead.
+  const canPostForReal = backend === 'ready' && Boolean(nimiq.address);
 
-  function handleSave() {
+  async function handleSave() {
     if (!format || !stakeValid) return;
+
+    if (canPostForReal && nimiq.address) {
+      setPosting(true);
+      setPostError(null);
+      try {
+        const challenge = await createChallenge(nimiq.address, {
+          format,
+          title: format === 'custom' ? customTitle.trim() : undefined,
+          currency,
+          stake: toSmallestUnit(currency, stakeValue),
+          note: note.trim() || undefined,
+          opponent: opponentMode === 'direct' ? (rival?.username ?? undefined) : undefined,
+        });
+        pushNotice('challenge', 'Challenge posted', `${currency} ${stakeValue} · live now`);
+        const path = `/challenges/${challenge.id}`;
+        setSaved({ link: `${window.location.origin}${path}`, path });
+      } catch (cause: unknown) {
+        setPostError(cause instanceof ApiError ? cause.message : 'Could not post that challenge.');
+      } finally {
+        setPosting(false);
+      }
+      return;
+    }
+
     const draft = {
       id: createId(),
       format,
@@ -87,10 +138,21 @@ function CreateFlow() {
     };
     saveDraft(draft);
     pushNotice('challenge', 'Challenge draft saved', `${draft.currency} ${draft.stake} · ready to share`);
-    setSaved(challengeUrl(encodeChallenge(draft, nimiq.address, displayName ?? defaultHandle(nimiq.address))));
+    setSaved({
+      link: challengeUrl(encodeChallenge(draft, nimiq.address, displayName ?? defaultHandle(nimiq.address))),
+      path: null,
+    });
   }
 
-  if (saved) return <SavedConfirmation link={saved} onDone={() => router.push('/challenges')} />;
+  if (saved) {
+    return (
+      <SavedConfirmation
+        link={saved.link}
+        live={saved.path !== null}
+        onDone={() => router.push(saved.path ?? '/challenges')}
+      />
+    );
+  }
 
   return (
     <div className="space-y-5 pt-2">
@@ -166,13 +228,26 @@ function CreateFlow() {
           </Button>
         ) : (
           <>
-            <Button onClick={handleSave} disabled={!canContinue} size="lg">
-              Save challenge draft
+            <Button onClick={handleSave} disabled={!canContinue} loading={posting} size="lg">
+              {canPostForReal ? 'Post challenge' : 'Save challenge draft'}
             </Button>
-            <PhaseNote>
-              Saving keeps this challenge on your device. It is not funded, not sent
-              to anyone, and no money moves — escrow and invites land in the next phase.
-            </PhaseNote>
+            {postError && (
+              <p role="alert" className="text-[0.8125rem] font-semibold text-negative">
+                {postError}
+              </p>
+            )}
+            {canPostForReal ? (
+              <PhaseNote>
+                Posting asks Nimiq Pay to sign it — no money moves yet. Funding is the next
+                step, once your opponent has accepted.
+              </PhaseNote>
+            ) : (
+              <PhaseNote>
+                {backend === 'unavailable'
+                  ? 'Escrow is not configured on this deployment, so this saves to your device only. Nothing is funded and no opponent is notified.'
+                  : 'Connect your wallet to post this for real. Saved for now on your device only.'}
+              </PhaseNote>
+            )}
           </>
         )}
       </div>
@@ -544,7 +619,7 @@ function ModeOption({
   );
 }
 
-function SavedConfirmation({ link, onDone }: { link: string; onDone: () => void }) {
+function SavedConfirmation({ link, live, onDone }: { link: string; live: boolean; onDone: () => void }) {
   const [copied, setCopied] = useState(false);
 
   async function share() {
@@ -569,19 +644,21 @@ function SavedConfirmation({ link, onDone }: { link: string; onDone: () => void 
       >
         <SwordsIcon className="size-9" />
       </span>
-      <h2 className="display mt-6 text-[2rem]">Draft saved</h2>
+      <h2 className="display mt-6 text-[2rem]">{live ? 'Challenge posted' : 'Draft saved'}</h2>
       <p className="mt-3 max-w-[18rem] text-[0.875rem] leading-relaxed text-muted">
-        It is stored on this device and ready to fund the moment escrow ships.
+        {live
+          ? 'It is live. Share the link, or wait for the player it is aimed at to open TeTe.'
+          : 'It is stored on this device and ready to post once escrow is available.'}
       </p>
       <Chip tone="warn" className="mt-4">
-        Not funded · No money moved
+        {live ? 'Not funded yet · Awaiting acceptance' : 'Not funded · No money moved'}
       </Chip>
       <div className="mt-8 w-full max-w-[17rem] space-y-2.5">
         <Button onClick={share} size="lg">
           {copied ? 'Link copied' : 'Share challenge link'}
         </Button>
         <Button variant="outline" onClick={onDone}>
-          View my challenges
+          {live ? 'View challenge' : 'View my challenges'}
         </Button>
       </div>
 
