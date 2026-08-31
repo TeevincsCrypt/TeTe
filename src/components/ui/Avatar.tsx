@@ -2,13 +2,14 @@ import { hashString } from '@/lib/ids';
 
 import { cn } from './cn';
 
+/** Drawn from the app palette so generated faces stay on-brand. */
 const PALETTES = [
-  ['#c8ff4d', '#0a0b0f'],
-  ['#8b5cf6', '#f2f1e4'],
-  ['#ff6b35', '#0a0b0f'],
-  ['#ffc93c', '#0a0b0f'],
-  ['#4ade80', '#0a0b0f'],
-  ['#f2f1e4', '#0a0b0f'],
+  ['#ff6a1a', '#17120e'],
+  ['#17120e', '#ff6a1a'],
+  ['#6d4aff', '#f7f2ed'],
+  ['#9a6600', '#f7f2ed'],
+  ['#15803d', '#f7f2ed'],
+  ['#cc3118', '#f7f2ed'],
 ] as const;
 
 /**

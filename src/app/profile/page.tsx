@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { CheckIcon } from '@/components/shell/icons';
+import { CheckIcon, TrashIcon } from '@/components/shell/icons';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
@@ -15,10 +15,11 @@ import { copyText } from '@/lib/clipboard';
 import { NIMIQ_NETWORK_LABEL } from '@/lib/config/env';
 import { chainLabel } from '@/lib/evm/chains';
 import { shortenEvmAddress } from '@/lib/evm/erc20';
-import { formatAddress } from '@/lib/nimiq/address';
+import { formatAddress, shortenAddress } from '@/lib/nimiq/address';
 import { defaultHandle } from '@/lib/profile/local-profile';
 import { useMiniApp } from '@/state/mini-app-provider';
 import { useDrafts } from '@/state/use-drafts';
+import { useRoster } from '@/state/use-roster';
 import { useLocalProfile } from '@/state/use-local-profile';
 
 /**
@@ -33,6 +34,7 @@ export default function ProfilePage() {
   const { nimiq, evm, locale } = useMiniApp();
   const { displayName, save } = useLocalProfile();
   const { drafts } = useDrafts();
+  const { players, remove: removePlayer } = useRoster();
 
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState('');
@@ -60,7 +62,7 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-5 pt-2">
-      <Sticker tone="cream" className="text-center">
+      <Sticker tone="contrast" className="text-center">
         <div className="flex flex-col items-center">
           <Avatar address={nimiq.address} size={80} className="shadow-[var(--shadow-sticker-sm)]" />
 
@@ -72,13 +74,13 @@ export default function ProfilePage() {
                 maxLength={20}
                 autoFocus
                 placeholder={handle}
-                className="w-full rounded-xl border-2 border-ink bg-cream-2 px-3.5 py-3 text-center text-[1.125rem] font-black tracking-tight text-ink focus:outline-none"
+                className="w-full rounded-xl border-2 border-on-contrast/20 bg-contrast-2 px-3.5 py-3 text-center text-[1.125rem] font-black tracking-tight text-on-contrast focus:outline-none"
               />
               <div className="mt-3 flex gap-2">
                 <Button
                   variant="outline"
                   onClick={() => setEditing(false)}
-                  className="border-ink/30 text-ink"
+                  className="border-on-contrast/30 text-on-contrast"
                 >
                   Cancel
                 </Button>
@@ -94,23 +96,28 @@ export default function ProfilePage() {
             </div>
           ) : (
             <>
-              <h1 className="display mt-4 text-[1.75rem] text-ink">{handle}</h1>
+              <h1 className="display mt-4 text-[1.75rem] text-on-contrast">{handle}</h1>
               <button
                 type="button"
                 onClick={() => {
                   setDraftName(displayName ?? '');
                   setEditing(true);
                 }}
-                className="mt-1.5 min-h-9 text-[0.75rem] font-bold text-ink/50 underline underline-offset-2"
+                className="mt-1.5 min-h-9 text-[0.75rem] font-bold text-on-contrast/60 underline underline-offset-2"
               >
                 Edit name
               </button>
             </>
           )}
 
-          <Chip tone="neutral" className="mt-3 border-ink/20 bg-ink/5 text-ink/60">
+          <Chip tone="inverse" className="mt-3">
             Unranked · Season 01
           </Chip>
+
+          <p className="mt-4 text-[0.6875rem] leading-snug text-on-contrast/55">
+            Share your address so friends can add you as{' '}
+            <span className="font-bold text-on-contrast/80">@{handle}</span> on their roster.
+          </p>
         </div>
       </Sticker>
 
@@ -118,7 +125,7 @@ export default function ProfilePage() {
         <Eyebrow className="mb-3 text-faint">Record</Eyebrow>
         <div className="grid grid-cols-2 gap-3">
           <StatTile label="Played" value={0} icon="⚔️" />
-          <StatTile label="Won" value={0} accent="lime" icon="🏆" />
+          <StatTile label="Won" value={0} accent="accent" icon="🏆" />
           <StatTile label="Win rate" value="—" icon="🎯" />
           <StatTile label="Best streak" value={0} accent="flame" icon="🔥" />
         </div>
@@ -173,6 +180,54 @@ export default function ProfilePage() {
       </section>
 
       <section>
+        <div className="mb-3 flex items-baseline justify-between">
+          <Eyebrow className="text-faint">Your roster</Eyebrow>
+          <span className="text-[0.75rem] font-bold text-faint tabular">{players.length}</span>
+        </div>
+
+        {players.length === 0 ? (
+          <Sticker tone="panel">
+            <p className="text-[0.8125rem] leading-relaxed text-muted">
+              No saved players yet. Add someone while creating a challenge and you can
+              call them out by username from then on.
+            </p>
+          </Sticker>
+        ) : (
+          <div className="space-y-2.5">
+            {players.map((player) => (
+              <div
+                key={player.id}
+                className="flex items-center gap-3 rounded-2xl border-2 border-ink/12 bg-panel p-3"
+              >
+                <Avatar address={player.address} size={38} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[0.9375rem] font-black tracking-tight">
+                    @{player.username}
+                  </p>
+                  <p className="truncate font-mono text-[0.6875rem] text-faint">
+                    {shortenAddress(player.address)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removePlayer(player.id)}
+                  aria-label={`Remove ${player.username}`}
+                  className="-m-2 flex size-11 items-center justify-center rounded-full text-faint transition-colors active:text-negative"
+                >
+                  <TrashIcon className="size-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <PhaseNote className="mt-3">
+          Usernames are nicknames you assign on this device. TeTe has no global handle
+          registry yet, so adding a player needs their address once.
+        </PhaseNote>
+      </section>
+
+      <section>
         <Eyebrow className="mb-3 text-faint">Network</Eyebrow>
         <Sticker tone="panel">
           <Row
@@ -202,6 +257,7 @@ export default function ProfilePage() {
           {NIMIQ_NETWORK_LABEL !== 'unknown' && (
             <Row label="RPC network" value={<span className="capitalize">{NIMIQ_NETWORK_LABEL}</span>} />
           )}
+          <Row label="Saved players" value={<span className="tabular">{players.length}</span>} />
           <Row label="Local drafts" value={<span className="tabular">{drafts.length}</span>} last />
         </Sticker>
       </section>

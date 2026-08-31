@@ -2,12 +2,12 @@ import type { ReactNode } from 'react';
 
 import { cn } from './cn';
 
-type Tone = 'cream' | 'panel' | 'lime' | 'violet' | 'outline';
+type Tone = 'contrast' | 'panel' | 'accent' | 'violet' | 'outline';
 
 const TONES: Record<Tone, string> = {
-  cream: 'bg-cream text-ink border-ink shadow-[var(--shadow-sticker)]',
-  panel: 'bg-panel text-text border-line shadow-none',
-  lime: 'bg-lime text-ink border-ink shadow-[var(--shadow-sticker)]',
+  contrast: 'bg-contrast text-on-contrast border-ink shadow-[var(--shadow-sticker)]',
+  panel: 'bg-panel text-text border-ink/12 shadow-none',
+  accent: 'bg-accent text-on-accent border-ink shadow-[var(--shadow-sticker)]',
   violet: 'bg-violet text-white border-ink shadow-[var(--shadow-sticker)]',
   outline: 'bg-transparent text-text border-line shadow-none',
 };

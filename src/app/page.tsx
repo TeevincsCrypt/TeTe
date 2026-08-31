@@ -39,7 +39,7 @@ export default function HomePage() {
           <Chip tone="neutral">Season 01</Chip>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <StatTile label="Wins" value={0} accent="lime" icon="🏆" />
+          <StatTile label="Wins" value={0} accent="accent" icon="🏆" />
           <StatTile label="Win rate" value="—" accent="plain" icon="🎯" />
           <StatTile label="Streak" value={0} accent="flame" icon="🔥" />
           <StatTile label="Rank" value="—" accent="gold" icon="👑" />
@@ -72,7 +72,7 @@ export default function HomePage() {
       <section>
         <div className="mb-3 flex items-baseline justify-between">
           <Eyebrow className="text-faint">Live matches</Eyebrow>
-          <Link href="/challenges" className="text-[0.75rem] font-bold text-lime">
+          <Link href="/challenges" className="text-[0.75rem] font-bold text-accent-text">
             See all
           </Link>
         </div>
@@ -101,11 +101,11 @@ export default function HomePage() {
 function Hero({ connected, handle }: { connected: boolean; handle: string }) {
   return (
     <section className="relative overflow-hidden rounded-[var(--radius-sticker)] border-2 border-ink bg-panel px-5 pb-6 pt-7">
-      <Sunburst className="-right-16 -top-24 size-64 text-lime/[0.07]" />
+      <Sunburst className="-right-16 -top-24 size-64 text-accent/[0.13]" />
 
       <div className="relative">
         <div className="flex items-center gap-2">
-          <Chip tone="lime" dot pulse>
+          <Chip tone="accent" dot pulse>
             {connected ? `Welcome back, ${handle}` : 'Ready when you are'}
           </Chip>
         </div>
@@ -115,7 +115,7 @@ function Hero({ connected, handle }: { connected: boolean; handle: string }) {
           <br />
           Compete.
           <br />
-          <span className="text-lime">Win.</span>
+          <span className="text-accent-text">Win.</span>
         </h1>
 
         <p className="mt-3 max-w-[19rem] text-[0.9375rem] leading-relaxed text-muted">
@@ -132,7 +132,7 @@ function Hero({ connected, handle }: { connected: boolean; handle: string }) {
       {/* A little personality, borrowed from arcade cabinet art. */}
       <span
         aria-hidden
-        className="absolute right-4 top-5 rotate-6 rounded-2xl border-2 border-ink bg-cream px-2.5 py-1 text-[0.625rem] font-black uppercase tracking-wider text-ink shadow-[var(--shadow-sticker-sm)] animate-[var(--animate-bob)]"
+        className="absolute right-4 top-5 rotate-6 rounded-2xl border-2 border-ink bg-contrast px-2.5 py-1 text-[0.625rem] font-black uppercase tracking-wider text-on-contrast shadow-[var(--shadow-sticker-sm)] animate-[var(--animate-bob)]"
       >
         1v1?
       </span>

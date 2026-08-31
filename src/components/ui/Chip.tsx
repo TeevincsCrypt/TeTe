@@ -2,11 +2,13 @@ import type { ReactNode } from 'react';
 
 import { cn } from './cn';
 
-type Tone = 'neutral' | 'lime' | 'violet' | 'flame' | 'gold' | 'positive' | 'warn';
+type Tone = 'neutral' | 'inverse' | 'accent' | 'violet' | 'flame' | 'gold' | 'positive' | 'warn';
 
 const TONES: Record<Tone, string> = {
-  neutral: 'border-line bg-panel-2 text-muted',
-  lime: 'border-lime/40 bg-lime/10 text-lime',
+  neutral: 'border-ink/12 bg-panel-2 text-muted',
+  /** For chips sitting on a dark panel, where the light-surface tones vanish. */
+  inverse: 'border-on-contrast/25 bg-on-contrast/10 text-on-contrast/80',
+  accent: 'border-accent/50 bg-accent/12 text-accent-text',
   violet: 'border-violet/40 bg-violet/15 text-violet',
   flame: 'border-flame/40 bg-flame/15 text-flame',
   gold: 'border-gold/40 bg-gold/15 text-gold',

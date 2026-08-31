@@ -11,7 +11,7 @@ import { useLocalProfile } from '@/state/use-local-profile';
 import { BrandMark } from './BrandMark';
 
 /**
- * Floating pill header: a cream bar sitting on the dark ground, brand on the
+ * Floating pill header: a near-black bar anchoring the white page, brand on the
  * left and identity on the right. It stays put while content scrolls under it,
  * so the player's handle and connection state are always one glance away.
  */
@@ -29,7 +29,7 @@ export function TopBar() {
       <div
         className={cn(
           'mx-auto flex w-full max-w-md items-center justify-between gap-2',
-          'rounded-full border-2 border-ink bg-cream py-2 pl-4 pr-2',
+          'rounded-full border-2 border-ink bg-contrast py-2 pl-4 pr-2',
           'shadow-[var(--shadow-sticker-sm)]',
         )}
       >
@@ -40,16 +40,16 @@ export function TopBar() {
         {connected ? (
           <Link
             href="/profile"
-            className="flex min-h-10 items-center gap-2 rounded-full border-2 border-ink bg-cream-2 py-1 pl-3 pr-1 transition-transform duration-150 active:scale-95"
+            className="flex min-h-10 items-center gap-2 rounded-full border-2 border-on-contrast/20 bg-contrast-2 py-1 pl-3 pr-1 transition-transform duration-150 active:scale-95"
           >
-            <span className="max-w-[6.5rem] truncate text-[0.8125rem] font-bold text-ink">
+            <span className="max-w-[6.5rem] truncate text-[0.8125rem] font-bold text-on-contrast">
               {handle}
             </span>
             <Avatar address={nimiq.address} size={30} />
           </Link>
         ) : (
-          <span className="flex min-h-10 items-center gap-1.5 rounded-full border-2 border-ink/25 px-3 text-[0.75rem] font-bold text-ink/60">
-            <span className="size-1.5 rounded-full bg-ink/40" />
+          <span className="flex min-h-10 items-center gap-1.5 rounded-full border-2 border-on-contrast/25 px-3 text-[0.75rem] font-bold text-on-contrast/70">
+            <span className="size-1.5 rounded-full bg-on-contrast/50" />
             Not connected
           </span>
         )}

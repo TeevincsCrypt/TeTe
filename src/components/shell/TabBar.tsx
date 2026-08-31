@@ -10,7 +10,7 @@ import { HomeIcon, PlusIcon, SwordsIcon, TrophyIcon, UserIcon } from './icons';
 /**
  * Bottom navigation. Every tab is a real route — nothing here is disabled.
  *
- * Create sits in the middle as a raised lime disc rather than another icon in
+ * Create sits in the middle as a raised accent disc rather than another icon in
  * the row, because creating a challenge is the one action the whole product is
  * built around and it should be reachable by thumb without aiming.
  */
@@ -28,7 +28,7 @@ export function TabBar() {
   return (
     <nav
       aria-label="Primary"
-      className="sticky bottom-0 z-20 border-t-2 border-line bg-ink/95 backdrop-blur-md"
+      className="sticky bottom-0 z-20 border-t-2 border-ink bg-panel/95 backdrop-blur-md"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <ul className="mx-auto flex w-full max-w-md items-end">
@@ -47,15 +47,15 @@ export function TabBar() {
                 >
                   <span
                     className={cn(
-                      'flex size-12 items-center justify-center rounded-full border-2 border-ink bg-lime text-ink',
+                      'flex size-12 items-center justify-center rounded-full border-2 border-ink bg-accent text-ink',
                       'shadow-[var(--shadow-sticker-sm)] transition-transform duration-150',
                       'active:translate-x-[3px] active:translate-y-[3px] active:shadow-none',
-                      active && 'ring-2 ring-lime ring-offset-2 ring-offset-ink',
+                      active && 'ring-2 ring-ink ring-offset-2 ring-offset-panel',
                     )}
                   >
                     <Icon className="size-6" strokeWidth={2.5} />
                   </span>
-                  <span className="text-[0.5625rem] font-black uppercase tracking-wider text-lime">
+                  <span className="text-[0.5625rem] font-black uppercase tracking-wider text-accent-text">
                     {label}
                   </span>
                 </Link>
@@ -71,7 +71,7 @@ export function TabBar() {
                 className={cn(
                   'flex min-h-16 flex-col items-center justify-center gap-1 pb-1',
                   'transition-colors duration-150',
-                  active ? 'text-lime' : 'text-faint active:text-muted',
+                  active ? 'text-accent-text' : 'text-faint active:text-muted',
                 )}
               >
                 <Icon className="size-[1.375rem]" />
@@ -79,7 +79,7 @@ export function TabBar() {
                 <span
                   className={cn(
                     'h-1 w-1 rounded-full transition-colors duration-150',
-                    active ? 'bg-lime' : 'bg-transparent',
+                    active ? 'bg-accent-text' : 'bg-transparent',
                   )}
                 />
               </Link>
