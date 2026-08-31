@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 
-import { CheckIcon, FlameIcon, SwordsIcon, TargetIcon, TrashIcon, TrophyIcon } from '@/components/shell/icons';
+import Link from 'next/link';
+
+import { CheckIcon, ChevronRightIcon, FlameIcon, SwordsIcon, TargetIcon, TrashIcon, TrophyIcon } from '@/components/shell/icons';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
@@ -20,6 +22,7 @@ import { defaultHandle } from '@/lib/profile/local-profile';
 import { useMiniApp } from '@/state/mini-app-provider';
 import { useDrafts } from '@/state/use-drafts';
 import { useRoster } from '@/state/use-roster';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { useLocalProfile } from '@/state/use-local-profile';
 
 /**
@@ -32,7 +35,7 @@ import { useLocalProfile } from '@/state/use-local-profile';
  */
 export default function ProfilePage() {
   const { nimiq, evm, locale } = useMiniApp();
-  const { displayName, save } = useLocalProfile();
+  const { displayName, save, avatarSeed, saveAvatar } = useLocalProfile();
   const { drafts } = useDrafts();
   const { players, remove: removePlayer } = useRoster();
 
@@ -56,6 +59,17 @@ export default function ProfilePage() {
           <h1 className="display mt-1 text-[2rem]">Profile</h1>
         </header>
         <ConnectPanel />
+
+        <section>
+          <Eyebrow className="mb-3 text-faint">Appearance</Eyebrow>
+          <div className="flex items-center justify-between rounded-2xl bg-panel-2 px-4 py-3">
+            <div>
+              <p className="text-[0.875rem] font-bold">Dark mode</p>
+              <p className="mt-0.5 text-[0.6875rem] text-faint">Follows your phone until you choose.</p>
+            </div>
+            <ThemeToggle />
+          </div>
+        </section>
       </div>
     );
   }
@@ -64,7 +78,7 @@ export default function ProfilePage() {
     <div className="space-y-5 pt-2">
       <Sticker tone="contrast" className="rounded-3xl p-7 text-center">
         <div className="flex flex-col items-center">
-          <Avatar address={nimiq.address} size={78} />
+          <Avatar address={nimiq.address} size={78} seed={avatarSeed} />
 
           {editing ? (
             <div className="mt-4 w-full">
@@ -122,6 +136,41 @@ export default function ProfilePage() {
       </Sticker>
 
       <section>
+        <Eyebrow className="mb-3 text-faint">Look</Eyebrow>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {[null, 1, 2, 3, 4, 5, 6, 7].map((seed, index) => {
+            const active = avatarSeed === seed;
+            return (
+              <button
+                key={index}
+                type="button"
+                onClick={() => saveAvatar(seed)}
+                aria-label={seed === null ? 'Use default avatar' : `Avatar style ${index}`}
+                aria-pressed={active}
+                className={cn(
+                  'rounded-full p-0.5 transition-transform duration-150 active:scale-90',
+                  active ? 'ring-2 ring-accent ring-offset-2 ring-offset-bg' : '',
+                )}
+              >
+                <Avatar address={nimiq.address} size={40} seed={seed} />
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section>
+        <Eyebrow className="mb-3 text-faint">Appearance</Eyebrow>
+        <div className="flex items-center justify-between rounded-2xl bg-panel-2 px-4 py-3">
+          <div>
+            <p className="text-[0.875rem] font-bold">Dark mode</p>
+            <p className="mt-0.5 text-[0.6875rem] text-faint">Follows your phone until you choose.</p>
+          </div>
+          <ThemeToggle />
+        </div>
+      </section>
+
+      <section>
         <Eyebrow className="mb-3 text-faint">Record</Eyebrow>
         <div className="grid grid-cols-2 gap-3">
           <StatTile label="Played" value={0} icon={<SwordsIcon className="size-3.5" />} />
@@ -132,6 +181,21 @@ export default function ProfilePage() {
         <PhaseNote className="mt-3">
           Real counters at zero. Nothing is recorded until challenges can be settled.
         </PhaseNote>
+      </section>
+
+      <section>
+        <Link
+          href="/wallet"
+          className="flex items-center justify-between rounded-2xl bg-contrast px-4 py-3.5 text-on-contrast active:opacity-80"
+        >
+          <span>
+            <span className="block text-[0.875rem] font-bold">Wallet and earnings</span>
+            <span className="mt-0.5 block text-[0.6875rem] text-on-contrast/60">
+              Deposit, withdraw, reward history
+            </span>
+          </span>
+          <ChevronRightIcon className="size-4" />
+        </Link>
       </section>
 
       <section>

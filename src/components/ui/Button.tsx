@@ -4,15 +4,16 @@ import Link from 'next/link';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 import { cn } from './cn';
+import { useRipple } from './Ripple';
 
 type Variant = 'primary' | 'contrast' | 'outline' | 'ghost' | 'violet';
 type Size = 'md' | 'lg';
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-accent text-on-accent border-ink shadow-[var(--shadow-sticker)]',
+  primary: 'bg-accent text-on-accent border-line shadow-[var(--shadow-sticker)]',
   contrast: 'bg-contrast text-on-contrast border-transparent',
   violet: 'bg-violet text-white border-transparent',
-  outline: 'bg-transparent text-text border-ink/20 hover:border-accent hover:text-accent-text',
+  outline: 'bg-transparent text-text border-line hover:border-accent hover:text-accent-text',
   ghost: 'bg-transparent text-muted border-transparent shadow-none hover:text-text',
 };
 
@@ -48,14 +49,22 @@ export function Button({
   disabled,
   className,
   children,
+  onPointerDown,
   ...props
 }: ButtonProps) {
+  const { layer, spawn } = useRipple();
+
   return (
     <button
       {...props}
       disabled={disabled || loading}
-      className={cn(BASE, SIZES[size], VARIANTS[variant], className)}
+      onPointerDown={(event) => {
+        if (!disabled && !loading) spawn(event);
+        onPointerDown?.(event);
+      }}
+      className={cn(BASE, 'relative overflow-hidden', SIZES[size], VARIANTS[variant], className)}
     >
+      {layer}
       {loading && <Spinner />}
       {children}
     </button>
@@ -76,8 +85,15 @@ export function ButtonLink({
   className?: string;
   children: ReactNode;
 }) {
+  const { layer, spawn } = useRipple();
+
   return (
-    <Link href={href} className={cn(BASE, SIZES[size], VARIANTS[variant], className)}>
+    <Link
+      href={href}
+      onPointerDown={spawn}
+      className={cn(BASE, 'relative overflow-hidden', SIZES[size], VARIANTS[variant], className)}
+    >
+      {layer}
       {children}
     </Link>
   );

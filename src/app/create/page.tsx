@@ -10,7 +10,12 @@ import { Chip } from '@/components/ui/Chip';
 import { cn } from '@/components/ui/cn';
 import { PhaseNote } from '@/components/ui/PhaseNote';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
+import { copyText } from '@/lib/clipboard';
 import { saveDraft } from '@/lib/challenges/drafts';
+import { challengeUrl, encodeChallenge } from '@/lib/challenges/share';
+import { pushNotice } from '@/lib/notifications/notifications';
+import { defaultHandle } from '@/lib/profile/local-profile';
+import { useLocalProfile } from '@/state/use-local-profile';
 import { CHALLENGE_FORMATS, type ChallengeFormatId, type OpponentMode } from '@/lib/challenges/types';
 import { createId } from '@/lib/ids';
 import { shortenAddress } from '@/lib/nimiq/address';
@@ -44,6 +49,7 @@ function CreateFlow() {
   const router = useRouter();
   const params = useSearchParams();
   const { nimiq } = useMiniApp();
+  const { displayName } = useLocalProfile();
 
   const initialFormat = (params.get('format') as ChallengeFormatId | null) ?? null;
 
@@ -55,7 +61,7 @@ function CreateFlow() {
   const [opponentMode, setOpponentMode] = useState<OpponentMode>('open');
   const [rival, setRival] = useState<RosterPlayer | null>(null);
   const [note, setNote] = useState('');
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
 
   const stakeValue = Number.parseFloat(stake);
   const stakeValid = Number.isFinite(stakeValue) && stakeValue > 0;
@@ -66,7 +72,7 @@ function CreateFlow() {
 
   function handleSave() {
     if (!format || !stakeValid) return;
-    saveDraft({
+    const draft = {
       id: createId(),
       format,
       customTitle: format === 'custom' ? customTitle.trim() : undefined,
@@ -77,11 +83,13 @@ function CreateFlow() {
       opponentUsername: opponentMode === 'direct' ? (rival?.username ?? undefined) : undefined,
       note: note.trim() || undefined,
       createdAt: Date.now(),
-    });
-    setSaved(true);
+    };
+    saveDraft(draft);
+    pushNotice('challenge', 'Challenge draft saved', `${draft.currency} ${draft.stake} · ready to share`);
+    setSaved(challengeUrl(encodeChallenge(draft, nimiq.address, displayName ?? defaultHandle(nimiq.address))));
   }
 
-  if (saved) return <SavedConfirmation onDone={() => router.push('/challenges')} />;
+  if (saved) return <SavedConfirmation link={saved} onDone={() => router.push('/challenges')} />;
 
   return (
     <div className="space-y-5 pt-2">
@@ -111,7 +119,7 @@ function CreateFlow() {
               key={index}
               className={cn(
                 'h-1 flex-1 rounded-full transition-colors duration-300',
-                index <= step ? 'bg-ink' : 'bg-ink/12',
+                index <= step ? 'bg-contrast' : 'bg-contrast/12',
               )}
             />
           ))}
@@ -197,7 +205,7 @@ function FormatStep({
                 'rounded-[var(--radius-sticker)] border-2 p-4 text-left transition-all duration-150',
                 'active:scale-[0.97]',
                 active
-                  ? 'border-ink bg-accent text-ink shadow-[var(--shadow-sticker)]'
+                  ? 'border-line bg-accent text-on-accent shadow-[var(--shadow-sticker)]'
                   : 'border-line bg-panel text-text',
               )}
             >
@@ -221,7 +229,7 @@ function FormatStep({
             onChange={(event) => onCustomTitle(event.target.value)}
             placeholder="e.g. Fastest Rubik's cube solve"
             maxLength={60}
-            className="mt-2 w-full rounded-xl border border-ink/12 bg-panel-2 px-3.5 py-3 text-[0.9375rem] font-semibold text-text placeholder:text-faint focus:border-accent focus:outline-none"
+            className="mt-2 w-full rounded-xl border border-line bg-panel-2 px-3.5 py-3 text-[0.9375rem] font-semibold text-text placeholder:text-faint focus:border-accent focus:outline-none"
           />
           <p className="mt-2 text-[0.6875rem] text-faint">
             Both players must agree how a winner is decided.
@@ -262,8 +270,8 @@ function StakeStep({
                 'min-h-14 rounded-full text-[1rem] font-black tracking-tight transition-all duration-150 active:scale-[0.97]',
                 active
                   ? option === 'NIM'
-                    ? 'border-ink bg-accent text-ink shadow-[var(--shadow-sticker)]'
-                    : 'border-ink bg-violet text-white shadow-[var(--shadow-sticker)]'
+                    ? 'border-line bg-accent text-on-accent shadow-[var(--shadow-sticker)]'
+                    : 'border-line bg-violet text-white shadow-[var(--shadow-sticker)]'
                   : 'border-line bg-panel text-muted',
               )}
             >
@@ -298,7 +306,7 @@ function StakeStep({
               key={amount}
               type="button"
               onClick={() => onStake(String(amount))}
-              className="min-h-10 flex-1 rounded-full border-2 border-ink/15 text-[0.8125rem] font-bold text-muted transition-colors active:border-accent active:text-accent-text"
+              className="min-h-10 flex-1 rounded-full border-2 border-line text-[0.8125rem] font-bold text-muted transition-colors active:border-accent active:text-accent-text"
             >
               {amount}
             </button>
@@ -308,7 +316,7 @@ function StakeStep({
 
       <div
         className={cn(
-          'rounded-2xl bg-ink p-5 transition-opacity duration-200',
+          'rounded-2xl bg-contrast p-5 transition-opacity duration-200',
           stakeValid ? 'opacity-100' : 'opacity-40',
         )}
       >
@@ -395,7 +403,7 @@ function OpponentStep({
           )}
 
           {rival && (
-            <div className="rounded-2xl bg-ink p-4 animate-[var(--animate-pop)]">
+            <div className="rounded-2xl bg-contrast p-4 animate-[var(--animate-pop)]">
               <Eyebrow className="text-on-contrast/60">Opponent</Eyebrow>
               <div className="mt-2.5 flex items-center gap-3">
                 <Avatar address={rival.address} size={40} />
@@ -448,7 +456,7 @@ function OpponentStep({
           rows={3}
           maxLength={200}
           placeholder="Best of three. No takebacks."
-          className="mt-2 w-full resize-none rounded-xl border border-ink/12 bg-panel-2 px-3.5 py-3 text-[0.875rem] text-text placeholder:text-faint focus:border-accent focus:outline-none"
+          className="mt-2 w-full resize-none rounded-xl border border-line bg-panel-2 px-3.5 py-3 text-[0.875rem] text-text placeholder:text-faint focus:border-accent focus:outline-none"
         />
         <p className="mt-1 text-right text-[0.6875rem] text-faint tabular">{note.length}/200</p>
       </Sticker>
@@ -494,7 +502,7 @@ function AddPlayerForm({
       <label htmlFor="username" className="sr-only">
         Username
       </label>
-      <div className="mt-2.5 flex items-center rounded-xl border border-ink/12 bg-panel-2 pl-3.5 focus-within:border-accent">
+      <div className="mt-2.5 flex items-center rounded-xl border border-line bg-panel-2 pl-3.5 focus-within:border-accent">
         <span className="text-[0.9375rem] font-black text-faint">@</span>
         <input
           id="username"
@@ -526,7 +534,7 @@ function AddPlayerForm({
         autoCapitalize="characters"
         autoCorrect="off"
         spellCheck={false}
-        className="mt-2 w-full rounded-xl border border-ink/12 bg-panel-2 px-3.5 py-3 font-mono text-[0.8125rem] text-text placeholder:text-faint focus:border-accent focus:outline-none"
+        className="mt-2 w-full rounded-xl border border-line bg-panel-2 px-3.5 py-3 font-mono text-[0.8125rem] text-text placeholder:text-faint focus:border-accent focus:outline-none"
       />
 
       {error && (
@@ -567,7 +575,7 @@ function ModeOption({
       aria-pressed={active}
       className={cn(
         'flex w-full items-center gap-3.5 rounded-2xl p-4 text-left transition-all duration-150 active:scale-[0.98]',
-        active ? 'bg-ink text-on-contrast' : 'bg-panel-2 text-text',
+        active ? 'bg-contrast text-on-contrast' : 'bg-panel-2 text-text',
       )}
     >
       <span
@@ -588,7 +596,7 @@ function ModeOption({
       <span
         className={cn(
           'flex size-6 shrink-0 items-center justify-center rounded-full border',
-          active ? 'border-accent bg-accent text-ink' : 'border-ink/20',
+          active ? 'border-accent bg-accent text-on-accent' : 'border-line',
         )}
       >
         {active && <CheckIcon className="size-3.5" strokeWidth={3} />}
@@ -597,12 +605,28 @@ function ModeOption({
   );
 }
 
-function SavedConfirmation({ onDone }: { onDone: () => void }) {
+function SavedConfirmation({ link, onDone }: { link: string; onDone: () => void }) {
+  const [copied, setCopied] = useState(false);
+
+  async function share() {
+    // The Web Share sheet is the natural route on a phone; copying is the
+    // fallback where it is unavailable or dismissed.
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'TeTe challenge', text: 'I am challenging you on TeTe', url: link });
+        return;
+      } catch {
+        /* Dismissed — fall through to copying. */
+      }
+    }
+    setCopied(await copyText(link));
+  }
+
   return (
     <div className="flex min-h-[70dvh] flex-col items-center justify-center text-center">
       <span
         aria-hidden
-        className="flex size-20 items-center justify-center rounded-3xl bg-ink text-accent animate-[var(--animate-pop)]"
+        className="flex size-20 items-center justify-center rounded-3xl bg-contrast text-accent animate-[var(--animate-pop)]"
       >
         <SwordsIcon className="size-9" />
       </span>
@@ -613,11 +637,19 @@ function SavedConfirmation({ onDone }: { onDone: () => void }) {
       <Chip tone="warn" className="mt-4">
         Not funded · No money moved
       </Chip>
-      <div className="mt-8 w-full max-w-[16rem]">
-        <Button onClick={onDone} size="lg">
+      <div className="mt-8 w-full max-w-[17rem] space-y-2.5">
+        <Button onClick={share} size="lg">
+          {copied ? 'Link copied' : 'Share challenge link'}
+        </Button>
+        <Button variant="outline" onClick={onDone}>
           View my challenges
         </Button>
       </div>
+
+      <p className="mt-5 max-w-[18rem] text-[0.75rem] leading-relaxed text-faint">
+        The link carries the terms, so anyone can open it — no account needed. Nothing is
+        funded until escrow ships.
+      </p>
     </div>
   );
 }

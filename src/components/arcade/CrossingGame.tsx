@@ -3,11 +3,12 @@
 import { useRef } from 'react';
 
 import { GameCanvas, type Frame } from './GameCanvas';
+import { drawCar, drawRunner, drawTrain } from './sprites';
 
 const LANE = 46;
 const COLS = 7;
 
-interface Car { lane: number; x: number; speed: number; w: number }
+interface Car { lane: number; x: number; speed: number; w: number; kind: 'car' | 'train'; body: string }
 interface State {
   row: number; col: number; over: boolean; scroll: number;
   lanes: { kind: 'road' | 'safe'; seed: number }[];
@@ -38,12 +39,18 @@ export function CrossingGame({ onFinish }: { onFinish: (score: number) => void }
         // Speed scales with depth, so the ramp is gradual and legible.
         const speed = (46 + Math.random() * 42 + index * 1.4) * dir;
         const count = 1 + Math.floor(Math.random() * 2);
-        for (let i = 0; i < count; i += 1) {
+        // A rail lane runs one long train instead of two cars, which changes
+        // the timing problem rather than just adding more of the same.
+        const rail = index > 6 && Math.random() < 0.22;
+        const bodies = ['#ff6a1a', '#6d4aff', '#15803d', '#c2410c', '#2b6cb0'];
+        for (let i = 0; i < (rail ? 1 : count); i += 1) {
           s.cars.push({
             lane: index,
             x: Math.random() * COLS * LANE,
-            speed,
-            w: 34 + Math.random() * 22,
+            speed: rail ? speed * 1.9 : speed,
+            w: rail ? 96 : 40 + Math.random() * 22,
+            kind: rail ? 'train' : 'car',
+            body: bodies[Math.floor(Math.random() * bodies.length)] ?? '#ff6a1a',
           });
         }
       }
@@ -99,7 +106,7 @@ export function CrossingGame({ onFinish }: { onFinish: (score: number) => void }
       const px = s.col * LANE + LANE / 2;
       for (const car of s.cars) {
         if (car.lane !== s.row) continue;
-        if (px > car.x - car.w / 2 - 9 && px < car.x + car.w / 2 + 9) {
+        if (px > car.x - car.w / 2 - 8 && px < car.x + car.w / 2 + 8) {
           s.over = true;
           if (!done.current) {
             done.current = true;
@@ -136,22 +143,13 @@ export function CrossingGame({ onFinish }: { onFinish: (score: number) => void }
     for (const car of s.cars) {
       const y = baseY - (car.lane * LANE - s.scroll) - LANE / 2;
       if (y < -LANE || y > height + LANE) continue;
-      ctx.fillStyle = car.speed > 0 ? '#ff6a1a' : '#6d4aff';
-      roundRect(ctx, ox + car.x - car.w / 2, y - 11, car.w, 22, 6);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      roundRect(ctx, ox + car.x - car.w / 2 + 6, y - 6, car.w - 12, 5, 2);
-      ctx.fill();
+      if (car.kind === 'train') drawTrain(ctx, ox + car.x, y, car.w, car.speed > 0);
+      else drawCar(ctx, ox + car.x, y, car.w, car.speed > 0, car.body);
     }
 
     const px = ox + s.col * LANE + LANE / 2;
-    const py = baseY - LANE / 2 - s.hop * 12;
-    ctx.fillStyle = s.over ? '#dc2626' : '#17120e';
-    roundRect(ctx, px - 13, py - 13, 26, 26, 8);
-    ctx.fill();
-    ctx.fillStyle = '#ff6a1a';
-    roundRect(ctx, px - 6, py - 7, 12, 6, 2);
-    ctx.fill();
+    const py = baseY - LANE / 2;
+    drawRunner(ctx, px, py, 1, s.hop);
 
     ctx.fillStyle = '#17120e';
     ctx.font = '900 34px Archivo, system-ui, sans-serif';
@@ -173,15 +171,3 @@ export function CrossingGame({ onFinish }: { onFinish: (score: number) => void }
   );
 }
 
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number, y: number, w: number, h: number, r: number,
-) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}

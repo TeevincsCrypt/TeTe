@@ -30,7 +30,7 @@ export function ConnectPanel() {
           'Winner takes the pot',
         ].map((step, index) => (
           <li key={step} className="flex items-center gap-2.5 text-[0.8125rem] font-semibold text-on-contrast/80">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ink text-[0.625rem] font-black text-accent tabular">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-contrast text-[0.625rem] font-black text-accent tabular">
               {index + 1}
             </span>
             {step}

@@ -1,23 +1,19 @@
 /**
  * Local progression: XP, the daily check-in streak, and personal bests.
  *
- * A deliberate limit, stated here because the UI states it too: **XP is not
- * NIM.** TeTe cannot pay anybody NIM. The Mini App provider only sends
- * transactions *from the connected player's own wallet, with their approval* —
- * there is no mechanism for the app to send funds *to* a player. A reward pool
- * needs a server holding a treasury key that signs payouts, which does not
- * exist here and cannot be faked client-side.
- *
- * So XP is an honest off-chain score. If a funded treasury is added later, the
- * conversion reads this same ledger; nothing recorded now has to be thrown away.
+ * Rewards themselves live in `lib/wallet/earnings.ts`, denominated in Luna.
+ * They are recorded but unpaid: a Mini App can ask the player's wallet to send
+ * funds, never send funds to a player, so paying out needs a treasury key
+ * signing from a server. This file only tracks streaks and personal bests.
  */
+import { addEarning, RATE_LUNA } from '@/lib/wallet/earnings';
+
 import type { GameId } from './games';
-import { isBetter } from './games';
+import { gameById, isBetter } from './games';
 
 const KEY = 'tete.progress.v1';
 
 export interface Progress {
-  xp: number;
   /** Local calendar day of the last claim, as YYYY-MM-DD. */
   lastCheckIn: string | null;
   streak: number;
@@ -25,7 +21,7 @@ export interface Progress {
   plays: number;
 }
 
-const EMPTY: Progress = { xp: 0, lastCheckIn: null, streak: 0, best: {}, plays: 0 };
+const EMPTY: Progress = { lastCheckIn: null, streak: 0, best: {}, plays: 0 };
 
 /** Local calendar day. Local, not UTC, so "today" matches the player's day. */
 export function dayKey(date = new Date()): string {
@@ -46,7 +42,6 @@ export function readProgress(): Progress {
     if (!raw) return EMPTY;
     const parsed = JSON.parse(raw) as Partial<Progress>;
     return {
-      xp: typeof parsed.xp === 'number' ? parsed.xp : 0,
       lastCheckIn: typeof parsed.lastCheckIn === 'string' ? parsed.lastCheckIn : null,
       streak: typeof parsed.streak === 'number' ? parsed.streak : 0,
       best: typeof parsed.best === 'object' && parsed.best ? parsed.best : {},
@@ -57,9 +52,12 @@ export function readProgress(): Progress {
   }
 }
 
-/** XP for today's check-in: grows with the streak, then plateaus. */
+/**
+ * Reward for today's check-in, in Luna. Grows with the streak, then plateaus so
+ * a long run cannot drain a fixed pool on its own.
+ */
 export function checkInReward(streak: number): number {
-  return 10 + Math.min(Math.max(streak - 1, 0), 8) * 5;
+  return RATE_LUNA.streakDay * (1 + Math.min(Math.max(streak - 1, 0), 6) * 0.5);
 }
 
 export function canCheckIn(progress: Progress): boolean {
@@ -75,9 +73,10 @@ export function claimCheckIn(): { progress: Progress; gained: number; streak: nu
   if (!canCheckIn(current)) return { progress: current, gained: 0, streak: current.streak };
 
   const streak = current.lastCheckIn === shiftDay(-1) ? current.streak + 1 : 1;
-  const gained = checkInReward(streak);
-  const next: Progress = { ...current, xp: current.xp + gained, lastCheckIn: dayKey(), streak };
+  const gained = Math.round(checkInReward(streak));
+  const next: Progress = { ...current, lastCheckIn: dayKey(), streak };
   write(next);
+  addEarning('streak', `Day ${streak} check-in`, gained);
   return { progress: next, gained, streak };
 }
 
@@ -85,18 +84,18 @@ export function claimCheckIn(): { progress: Progress; gained: number; streak: nu
 export function recordGame(
   id: GameId,
   score: number,
-  xp: number,
 ): { progress: Progress; gained: number; record: boolean } {
   const current = readProgress();
   const record = isBetter(id, score, current.best[id]);
   const next: Progress = {
     ...current,
-    xp: current.xp + xp,
     plays: current.plays + 1,
     best: record ? { ...current.best, [id]: score } : current.best,
   };
   write(next);
-  return { progress: next, gained: xp, record };
+  const gained = Math.round(score * RATE_LUNA[id]);
+  addEarning('game', `${gameById(id).name} — ${score}`, gained);
+  return { progress: next, gained, record };
 }
 
 function write(progress: Progress): void {

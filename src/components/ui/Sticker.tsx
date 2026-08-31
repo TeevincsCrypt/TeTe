@@ -9,7 +9,7 @@ const TONES: Record<Tone, string> = {
   panel: 'bg-panel-2 text-text border-transparent',
   accent: 'bg-accent text-on-accent border-transparent',
   violet: 'bg-violet text-white border-transparent',
-  outline: 'bg-transparent text-text border-ink/15',
+  outline: 'bg-transparent text-text border-line',
 };
 
 /**

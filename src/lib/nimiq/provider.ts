@@ -144,6 +144,33 @@ export async function signMessage(message: string): Promise<{ publicKey: string;
 }
 
 /**
+ * Send NIM from the player's wallet.
+ *
+ * This is a real transaction. Nimiq Pay raises its own confirmation dialog and
+ * signs it — TeTe never sees a key and cannot send without the player agreeing
+ * on that native prompt.
+ *
+ * `value` is in Luna (1 NIM = 100,000 Luna). Fee is left unset so Nimiq Pay
+ * picks one, using zero where it can.
+ *
+ * Note the return value is documented inconsistently upstream: the API
+ * reference calls it a transaction hash, while the SDK's own type comment says
+ * "the serialized transaction". Callers here treat it as an opaque receipt
+ * string and do not parse it.
+ */
+export async function sendNim(recipient: string, value: number, data?: string): Promise<string> {
+  const provider = await getProvider();
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new NimiqProviderError('failed', 'The amount must be a positive whole number of Luna.');
+  }
+  return unwrap<string>(() =>
+    data
+      ? provider.sendBasicTransactionWithData({ recipient, value, data })
+      : provider.sendBasicTransaction({ recipient, value }),
+  );
+}
+
+/**
  * Read consensus state and block height. Neither prompts the user, so they are
  * requested in parallel — the docs ask that read-only calls be batched.
  */

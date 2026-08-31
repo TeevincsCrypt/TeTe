@@ -6,6 +6,7 @@ import { FlameIcon } from '@/components/shell/icons';
 import { Chip } from '@/components/ui/Chip';
 import { cn } from '@/components/ui/cn';
 import { checkInReward } from '@/lib/arcade/progress';
+import { formatNim } from '@/lib/nimiq/units';
 import { useProgress } from '@/state/use-progress';
 
 /**
@@ -13,7 +14,8 @@ import { useProgress } from '@/state/use-progress';
  *
  * The streak is real: it counts consecutive local days claimed, resets on a
  * missed day, and the reward grows with it before plateauing. What it pays is
- * XP — an off-chain score — because TeTe has no way to send a player NIM.
+ * NIM into the rewards ledger — recorded but unpaid, because a Mini App
+ * cannot send funds to a player. See lib/wallet/earnings.ts.
  */
 export function DailyCheckIn() {
   const { progress, claim, checkInAvailable, loaded } = useProgress();
@@ -21,20 +23,20 @@ export function DailyCheckIn() {
 
   if (!loaded) return null;
 
-  const nextReward = checkInReward(progress.streak + (checkInAvailable ? 1 : 0));
+  const nextReward = Math.round(checkInReward(progress.streak + (checkInAvailable ? 1 : 0)));
 
   return (
     <div
       className={cn(
         'relative flex items-center gap-4 overflow-hidden rounded-2xl p-4',
-        checkInAvailable ? 'bg-ink' : 'bg-panel-2',
+        checkInAvailable ? 'bg-contrast' : 'bg-panel-2',
       )}
     >
       <span
         aria-hidden
         className={cn(
           'flex size-11 shrink-0 items-center justify-center rounded-xl',
-          checkInAvailable ? 'bg-accent text-ink' : 'bg-panel text-faint',
+          checkInAvailable ? 'bg-accent text-on-accent' : 'bg-panel text-faint',
         )}
       >
         <FlameIcon className="size-5" />
@@ -55,7 +57,9 @@ export function DailyCheckIn() {
             checkInAvailable ? 'text-on-contrast/60' : 'text-faint',
           )}
         >
-          {checkInAvailable ? `Check in for +${nextReward} XP` : 'Checked in — come back tomorrow'}
+          {checkInAvailable
+            ? `Check in for +${formatNim(nextReward, { maximumFractionDigits: 2 })} NIM`
+            : 'Checked in — come back tomorrow'}
         </p>
       </div>
 
@@ -63,7 +67,7 @@ export function DailyCheckIn() {
         <button
           type="button"
           onClick={() => setBurst(claim().gained)}
-          className="shrink-0 rounded-full bg-accent px-4 py-2.5 text-[0.8125rem] font-black text-ink transition-transform duration-100 active:scale-95"
+          className="shrink-0 rounded-full bg-accent px-4 py-2.5 text-[0.8125rem] font-black text-on-accent transition-transform duration-100 active:scale-95"
         >
           Claim
         </button>
@@ -74,7 +78,7 @@ export function DailyCheckIn() {
           tone="gold"
           className="absolute right-4 top-2 animate-[var(--animate-pop)]"
         >
-          +{burst} XP
+          +{formatNim(burst, { maximumFractionDigits: 2 })} NIM
         </Chip>
       )}
     </div>

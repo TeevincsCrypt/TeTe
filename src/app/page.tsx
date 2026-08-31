@@ -18,10 +18,12 @@ import { BalanceRail } from '@/components/wallet/BalanceRail';
 import { ConnectPanel } from '@/components/wallet/ConnectPanel';
 import { GAMES } from '@/lib/arcade/games';
 import { CHALLENGE_FORMATS } from '@/lib/challenges/types';
+import { formatNim } from '@/lib/nimiq/units';
 import { defaultHandle } from '@/lib/profile/local-profile';
 import { useMiniApp } from '@/state/mini-app-provider';
 import { useDrafts } from '@/state/use-drafts';
 import { useLocalProfile } from '@/state/use-local-profile';
+import { useEarnings } from '@/state/use-earnings';
 import { useProgress } from '@/state/use-progress';
 
 const TICKER = ['Skill only', 'No luck', 'NIM and USDT', 'Winner takes all', 'Built on Nimiq'] as const;
@@ -31,6 +33,7 @@ export default function HomePage() {
   const { displayName } = useLocalProfile();
   const { drafts } = useDrafts();
   const { progress } = useProgress();
+  const { totalLuna } = useEarnings();
   const connected = nimiq.address !== null;
   const handle = displayName ?? defaultHandle(nimiq.address);
 
@@ -54,10 +57,10 @@ export default function HomePage() {
 
         <Link
           href="/create"
-          className="mt-6 inline-flex min-h-13 w-full items-center justify-between rounded-full bg-ink pl-6 pr-2 text-on-contrast transition-transform duration-100 active:scale-[0.985]"
+          className="mt-6 inline-flex min-h-13 w-full items-center justify-between rounded-full bg-contrast pl-6 pr-2 text-on-contrast transition-transform duration-100 active:scale-[0.985]"
         >
           <span className="text-[0.9375rem] font-bold">Create a challenge</span>
-          <span className="flex size-10 items-center justify-center rounded-full bg-accent text-ink">
+          <span className="flex size-10 items-center justify-center rounded-full bg-accent text-on-accent">
             <SwordsIcon className="size-4.5" />
           </span>
         </Link>
@@ -70,31 +73,34 @@ export default function HomePage() {
       </div>
 
       {/* Stats as a figure row divided by hairlines, not four bordered boxes. */}
-      <section className="mt-8 border-y border-ink/10">
-        <div className="grid grid-cols-4 divide-x divide-ink/10">
+      <section className="mt-8 border-y border-line">
+        <div className="grid grid-cols-4 divide-x divide-line">
           <Figure icon={<TrophyIcon className="size-3.5" />} label="Wins" value="0" />
           <Figure icon={<FlameIcon className="size-3.5" />} label="Streak" value={String(progress.streak)} />
-          <Figure icon={<StarIcon className="size-3.5" />} label="XP" value={progress.xp.toLocaleString()} />
+          <Figure icon={<StarIcon className="size-3.5" />} label="Earned" value={formatNim(totalLuna)} />
           <Figure icon={<CrownIcon className="size-3.5" />} label="Rank" value="—" />
         </div>
       </section>
-      <Link
-        href="/leaderboard"
-        className="mt-2.5 flex items-center gap-2 py-1 text-[0.75rem] font-bold text-accent-text active:opacity-60"
-      >
-        Season 01 standings
-        <ChevronRightIcon className="size-3.5" />
-      </Link>
+      <div className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1">
+        <Link href="/leaderboard" className="flex items-center gap-1.5 py-1 text-[0.75rem] font-bold text-accent-text active:opacity-60">
+          Season 01 standings
+          <ChevronRightIcon className="size-3.5" />
+        </Link>
+        <Link href="/wallet" className="flex items-center gap-1.5 py-1 text-[0.75rem] font-bold text-accent-text active:opacity-60">
+          Wallet and earnings
+          <ChevronRightIcon className="size-3.5" />
+        </Link>
+      </div>
       <p className="mt-1 text-[0.6875rem] leading-snug text-faint">
-        Streak and XP are yours and live. Wins and rank stay empty until challenges ship.
+        Streak and earnings are yours and live. Wins and rank stay empty until challenges ship.
       </p>
 
       <Section title="Arcade" href="/arcade" action="All games">
-        <ul className="divide-y divide-ink/10">
+        <ul className="divide-y divide-line">
           {GAMES.map((game) => (
             <li key={game.id}>
               <Link href="/arcade" className="flex items-center gap-3.5 py-3.5 active:opacity-60">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-ink text-accent">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-contrast text-accent">
                   <GameGlyph id={game.id} className="size-5" />
                 </span>
                 <span className="min-w-0 flex-1">
@@ -136,7 +142,7 @@ export default function HomePage() {
         </div>
       </Section>
 
-      <div className="-mx-4 mt-9 border-y border-ink/10 py-2.5">
+      <div className="-mx-4 mt-9 border-y border-line py-2.5">
         <Marquee items={TICKER} />
       </div>
     </div>

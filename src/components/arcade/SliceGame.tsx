@@ -3,10 +3,11 @@
 import { useRef } from 'react';
 
 import { GameCanvas, type Frame } from './GameCanvas';
+import { drawBomb, drawFruit, type FruitKind } from './sprites';
 
 interface Target {
   x: number; y: number; vx: number; vy: number; r: number;
-  spin: number; angle: number; hit: boolean; bomb: boolean; hue: string;
+  spin: number; angle: number; hit: boolean; bomb: boolean; fruit: FruitKind;
 }
 interface Trail { x: number; y: number; life: number }
 interface State {
@@ -14,7 +15,7 @@ interface State {
   over: boolean; started: boolean; spawn: number; elapsed: number; combo: number; comboAt: number;
 }
 
-const COLOURS = ['#ff6a1a', '#6d4aff', '#15803d', '#9a6600', '#cc3118'];
+const FRUITS: FruitKind[] = ['melon', 'orange', 'apple', 'lime', 'plum', 'banana'];
 
 /**
  * Slice — swipe through the targets, leave the black ones alone.
@@ -65,7 +66,7 @@ export function SliceGame({ onFinish }: { onFinish: (score: number) => void }) {
             angle: 0,
             hit: false,
             bomb,
-            hue: bomb ? '#17120e' : COLOURS[Math.floor(Math.random() * COLOURS.length)] ?? '#ff6a1a',
+            fruit: FRUITS[Math.floor(Math.random() * FRUITS.length)] ?? 'orange',
           });
         }
       }
@@ -121,30 +122,8 @@ export function SliceGame({ onFinish }: { onFinish: (score: number) => void }) {
     ctx.fillRect(0, 0, width, height);
 
     for (const t of s.targets) {
-      ctx.save();
-      ctx.translate(t.x, t.y);
-      ctx.rotate(t.angle);
-      ctx.globalAlpha = t.hit ? 0.32 : 1;
-      ctx.fillStyle = t.hue;
-      ctx.beginPath();
-      ctx.arc(0, 0, t.r, 0, Math.PI * 2);
-      ctx.fill();
-      if (t.bomb) {
-        ctx.strokeStyle = '#ff6a1a';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(-t.r * 0.4, -t.r * 0.4);
-        ctx.lineTo(t.r * 0.4, t.r * 0.4);
-        ctx.moveTo(t.r * 0.4, -t.r * 0.4);
-        ctx.lineTo(-t.r * 0.4, t.r * 0.4);
-        ctx.stroke();
-      } else {
-        ctx.fillStyle = 'rgba(255,255,255,0.4)';
-        ctx.beginPath();
-        ctx.arc(-t.r * 0.3, -t.r * 0.3, t.r * 0.24, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
+      if (t.bomb) drawBomb(ctx, t.x, t.y, t.r, t.angle, t.hit);
+      else drawFruit(ctx, t.fruit, t.x, t.y, t.r, t.angle, t.hit);
     }
 
     ctx.lineCap = 'round';
@@ -182,7 +161,7 @@ export function SliceGame({ onFinish }: { onFinish: (score: number) => void }) {
 
     ctx.font = '700 11px Archivo, system-ui, sans-serif';
     ctx.fillStyle = 'rgba(23,18,14,0.5)';
-    ctx.fillText(s.over ? 'TAP TO RESTART' : 'SWIPE TO SLICE · AVOID THE BLACK ONES', 16, height - 14);
+    ctx.fillText(s.over ? 'TAP TO RESTART' : 'SWIPE TO SLICE · AVOID THE BOMBS', 16, height - 14);
   }
 
   return (

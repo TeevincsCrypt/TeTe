@@ -13,53 +13,50 @@
         gold = rank.
 --------------------------------------------------------------------------- */
 @theme {
-  /* Page ground and card surfaces. The app is light now: a warm white page,
-     white cards, and a warm inset for anything recessed. */
+  /* Light is the default. Every value below is re-declared for dark under
+     [data-theme='dark'] in the base layer, so a token never has to be chased
+     across two files to know what it does.
+
+       bg / panel / panel-2   page and surfaces
+       text / muted / faint   type, in descending emphasis
+       line                   hairlines and dividers
+       contrast               the inverted block, with on-contrast as its type
+       accent                 the one colour that points, with on-accent on it
+       accent-text            accent darkened enough to survive as small type
+  */
   --color-bg: #fbf8f5;
   --color-panel: #ffffff;
   --color-panel-2: #f3ede7;
-  --color-line: #e6ddd4;
+  --color-line: #e7ded5;
 
-  /* `ink` is the darkest value in the system. It does triple duty: body text,
-     the solid border on every sticker, and the hard shadow underneath it. */
-  --color-ink: #17120e;
   --color-text: #17120e;
   --color-muted: #6e635a;
   --color-faint: #7d7168;
 
-  /* The inverted card. Alternating white and near-black panels is what keeps
-     the layout from flattening into one pale sheet. */
   --color-contrast: #17120e;
   --color-contrast-2: #2a211b;
   --color-on-contrast: #f7f2ed;
 
-  /* Orange leads. Two variants because a colour that reads well as a large
-     fill does not automatically read well as small text: `accent` is for
-     fills with `on-accent` text over it, `accent-text` is the darkened
-     version that clears contrast when orange has to be type on white. */
   --color-accent: #ff6a1a;
   --color-accent-deep: #db4e0a;
   --color-accent-text: #c2410c;
   --color-on-accent: #17120e;
 
-  /* Support colours, each carrying exactly one meaning. All darkened from
-     their dark-theme values to stay legible on white. */
   --color-violet: #6d4aff;
   --color-flame: #cc3118;
   --color-gold: #9a6600;
   --color-positive: #15803d;
   --color-negative: #dc2626;
 
+  --color-shadow: #17120e;
+
   --font-sans: var(--font-archivo), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
 
   --radius-sticker: 1.75rem;
-  --radius-chip: 999px;
 
-  /* Hard, blur-free shadows. This is what makes a panel read as a sticker. */
-  --shadow-sticker: 4px 4px 0 var(--color-ink);
-  --shadow-sticker-sm: 3px 3px 0 var(--color-ink);
-  --shadow-accent: 4px 4px 0 var(--color-accent-deep);
+  --shadow-sticker: 4px 4px 0 var(--color-shadow);
+  --shadow-sticker-sm: 3px 3px 0 var(--color-shadow);
 
   --animate-rise: rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-pop: pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
@@ -67,6 +64,8 @@
   --animate-shimmer: shimmer 1.5s ease-in-out infinite;
   --animate-spin-slow: spin 14s linear infinite;
   --animate-bob: bob 3.2s ease-in-out infinite;
+  --animate-ripple: ripple 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  --animate-toast: toastIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
 
   @keyframes rise {
     from { opacity: 0; transform: translate3d(0, 12px, 0); }
@@ -83,6 +82,18 @@
   @keyframes shimmer {
     0%, 100% { opacity: 0.3; }
     50% { opacity: 0.7; }
+  }
+  @keyframes bob {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(0, -6px, 0); }
+  }
+  @keyframes ripple {
+    from { transform: scale(0); opacity: 0.35; }
+    to { transform: scale(2.6); opacity: 0; }
+  }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translate3d(0, -14px, 0) scale(0.97); }
+    to { opacity: 1; transform: none; }
   }
   @keyframes introWipe {
     from { transform: translate3d(-101%, 0, 0); }
@@ -110,16 +121,54 @@
     50% { opacity: 1; }
     to { opacity: 0; transform: scale(1.6) rotate(90deg); }
   }
-  @keyframes bob {
-    0%, 100% { transform: translate3d(0, 0, 0); }
-    50% { transform: translate3d(0, -6px, 0); }
-  }
 }
 
 @layer base {
+  /* Dark: black ground, green accent. Only the tokens change — no component
+     knows which theme is running, which is what keeps the two in step. */
+  :root[data-theme='dark'] {
+    --color-bg: #08090b;
+    --color-panel: #11141a;
+    --color-panel-2: #191d25;
+    --color-line: #272d38;
+
+    --color-text: #eef2ea;
+    --color-muted: #98a1ac;
+    --color-faint: #6c7683;
+
+    --color-contrast: #1c212a;
+    --color-contrast-2: #242b36;
+    --color-on-contrast: #eef2ea;
+
+    --color-accent: #c8ff4d;
+    --color-accent-deep: #a5db2c;
+    --color-accent-text: #c8ff4d;
+    --color-on-accent: #0b1400;
+
+    --color-violet: #9d7cff;
+    --color-flame: #ff7a5c;
+    --color-gold: #ffc93c;
+    --color-positive: #4ade80;
+    --color-negative: #ff6b6b;
+
+    --color-shadow: #000000;
+  }
+
   html {
     background-color: var(--color-bg);
+    color-scheme: light;
     -webkit-text-size-adjust: 100%;
+  }
+
+  html[data-theme='dark'] {
+    color-scheme: dark;
+  }
+
+  /* Surfaces and type animate so the toggle reads as a dissolve rather than a
+     hard cut. Kept off transforms so it stays on the compositor. */
+  html,
+  body {
+    transition: background-color 0.28s ease, color 0.28s ease;
   }
 
   body {

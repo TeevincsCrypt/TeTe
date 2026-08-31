@@ -7,7 +7,7 @@ import { ButtonLink } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PhaseNote } from '@/components/ui/PhaseNote';
-import { Segmented } from '@/components/ui/Segmented';
+import { SlidingTabs } from '@/components/ui/SlidingTabs';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { draftTitle, type ChallengeDraft } from '@/lib/challenges/types';
 import { shortenAddress } from '@/lib/nimiq/address';
@@ -34,7 +34,7 @@ export default function ChallengesPage() {
         <h1 className="display mt-1 text-[2rem]">Challenges</h1>
       </header>
 
-      <Segmented<Tab>
+      <SlidingTabs<Tab>
         value={tab}
         onChange={setTab}
         options={[
@@ -103,7 +103,7 @@ function DraftRow({ draft, onDelete }: { draft: ChallengeDraft; onDelete: () => 
       <div className="flex items-start gap-3.5">
         <span
           aria-hidden
-          className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-ink text-accent"
+          className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-contrast text-accent"
         >
           <SwordsIcon className="size-5" />
         </span>

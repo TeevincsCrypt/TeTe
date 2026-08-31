@@ -23,12 +23,15 @@ export function Avatar({
   address,
   size = 44,
   className,
+  seed,
 }: {
   address: string | null;
   size?: number;
   className?: string;
+  /** Overrides the address-derived look when the player has picked one. */
+  seed?: number | null;
 }) {
-  const hash = hashString(address ?? 'tete');
+  const hash = seed === null || seed === undefined ? hashString(address ?? 'tete') : seed;
   const palette = PALETTES[hash % PALETTES.length] ?? PALETTES[0];
   const [bg, fg] = palette;
   const rotation = hash % 4;
@@ -37,7 +40,7 @@ export function Avatar({
   return (
     <span
       className={cn(
-        'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-ink',
+        'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-line',
         className,
       )}
       style={{ width: size, height: size, background: bg }}
