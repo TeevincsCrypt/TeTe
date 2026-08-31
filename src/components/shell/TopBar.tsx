@@ -37,7 +37,7 @@ export function TopBar() {
         )}
       >
         <Link href="/" aria-label="TeTe home" className="flex items-center py-1">
-          <BrandMark />
+          <BrandMark size={34} withWordmark={false} />
         </Link>
 
         <div className="flex items-center gap-1">
