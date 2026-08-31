@@ -27,7 +27,7 @@ export function EmptyState({
     <div className={cn('flex flex-col items-center px-6 py-10 text-center', className)}>
       <span
         aria-hidden
-        className="flex size-20 items-center justify-center rounded-full border-2 border-line bg-panel text-[2rem] animate-[var(--animate-bob)]"
+        className="flex size-20 items-center justify-center rounded-full border-2 border-ink/15 bg-panel-2 text-[2rem] animate-[var(--animate-bob)]"
       >
         {glyph}
       </span>

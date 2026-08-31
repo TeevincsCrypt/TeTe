@@ -2,10 +2,10 @@ import type { ReactNode } from 'react';
 
 import { cn } from './cn';
 
-type Accent = 'lime' | 'violet' | 'flame' | 'gold' | 'plain';
+type Accent = 'accent' | 'violet' | 'flame' | 'gold' | 'plain';
 
 const ACCENTS: Record<Accent, string> = {
-  lime: 'text-lime',
+  accent: 'text-accent-text',
   violet: 'text-violet',
   flame: 'text-flame',
   gold: 'text-gold',
@@ -35,7 +35,7 @@ export function StatTile({
   return (
     <div
       className={cn(
-        'rounded-2xl border-2 border-line bg-panel p-3.5',
+        'rounded-2xl border-2 border-ink/12 bg-panel p-3.5',
         'transition-transform duration-150 active:scale-[0.97]',
         className,
       )}

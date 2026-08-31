@@ -31,6 +31,7 @@ wallet, no placeholder balance and no simulated transaction anywhere in this cod
 | Five working screens | ✅ | Home, Challenges, Create, Leaderboard, Profile |
 | Challenge builder | ✅ local only | Real 3-step form, saves an unfunded local draft |
 | Local display name + avatar | ✅ | Name stored on device, avatar derived from the address |
+| Challenge by username | ✅ local only | Saved roster of opponents; no global handle registry yet |
 | Escrow, invites, settlement, ranking | ❌ not built | Phase 2+ |
 
 No transaction is ever sent in Phase 1. The app only reads state and requests
@@ -168,17 +169,34 @@ The visual language leans on four cheap-to-render moves:
 - **Chunky uppercase display type.** Archivo 900, tightly tracked, loaded through
   `next/font` so it is self-hosted at build time — no runtime request to Google,
   no layout shift on a phone connection.
-- **Alternating cream and near-black surfaces.** The light "sticker" panels are
-  what stop the app reading as another dark crypto dashboard.
+- **Alternating white and near-black surfaces.** A warm-white page with white
+  cards, punctuated by inverted dark panels, is what stops the layout
+  flattening into one pale sheet.
 - **Hard, blur-free shadows.** A solid offset shadow plus a real border makes a
   panel read as a sticker rather than floating glass. Pressing a button collapses
   the shadow and nudges the element into it, so a tap feels physical.
-- **One accent that leads.** Lime points at every action. Violet means USDT,
+- **One accent that leads.** Orange points at every action. Violet means USDT,
   flame means streak, gold means rank — each support colour carries exactly one
-  meaning, so colour is information rather than decoration.
+  meaning, so colour is information rather than decoration. Orange ships in two
+  values: a vivid one for fills, and a darkened `accent-text` for the cases
+  where orange has to be type on white and the vivid version misses contrast.
 
 Motion is limited to `transform` and `opacity` so it stays on the compositor,
 and everything is disabled under `prefers-reduced-motion`.
+
+### Challenging by username
+
+Opponents are addressed by name — `@rival99` rather than 36 characters of
+address. The honest limit, which the UI states rather than hides: TeTe has no
+backend, so there is **no global handle registry** to look anyone up in. A
+username is a nickname the player assigns on their own device.
+
+So adding someone to the roster needs their address exactly once; from then on
+they are reachable by name, and challenge rows read "vs @rival99". The roster
+rejects a duplicate username and refuses to save one address under two names, so
+a single opponent cannot appear twice. When a backend arrives this becomes the
+local cache in front of a real registry and the address step goes away — the
+record shape does not change.
 
 ### Honest empty states
 

@@ -114,7 +114,9 @@ function DraftRow({ draft, onDelete }: { draft: ChallengeDraft; onDelete: () => 
           <p className="mt-1 text-[0.75rem] text-faint">
             {draft.opponentMode === 'open'
               ? 'Open to anyone'
-              : `vs ${draft.opponent ? shortenAddress(draft.opponent) : 'opponent'}`}
+              : draft.opponentUsername
+                ? `vs @${draft.opponentUsername}`
+                : `vs ${draft.opponent ? shortenAddress(draft.opponent) : 'opponent'}`}
           </p>
         </div>
 
@@ -140,7 +142,7 @@ function DraftRow({ draft, onDelete }: { draft: ChallengeDraft; onDelete: () => 
       </div>
 
       {draft.note && (
-        <p className="mt-3 rounded-xl bg-ink px-3 py-2.5 text-[0.75rem] italic leading-snug text-muted">
+        <p className="mt-3 rounded-xl bg-panel-2 px-3 py-2.5 text-[0.75rem] italic leading-snug text-muted">
           “{draft.note}”
         </p>
       )}

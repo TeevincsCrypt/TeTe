@@ -16,10 +16,10 @@ export function ConnectPanel() {
   const { host, nimiq, connectNimiq } = useMiniApp();
 
   return (
-    <Sticker tone="cream" className="overflow-hidden">
-      <p className="eyebrow text-ink/50">Step one</p>
-      <h2 className="display mt-1.5 text-[1.5rem] text-ink">Bring your wallet</h2>
-      <p className="mt-2 text-[0.875rem] leading-relaxed text-ink/70">
+    <Sticker tone="contrast" className="overflow-hidden">
+      <p className="eyebrow text-on-contrast/50">Step one</p>
+      <h2 className="display mt-1.5 text-[1.5rem] text-on-contrast">Bring your wallet</h2>
+      <p className="mt-2 text-[0.875rem] leading-relaxed text-on-contrast/70">
         Nimiq Pay approves every move. Your keys never leave it, and TeTe never sees them.
       </p>
 
@@ -29,8 +29,8 @@ export function ConnectPanel() {
           'Both players stake the same',
           'Winner takes the pot',
         ].map((step, index) => (
-          <li key={step} className="flex items-center gap-2.5 text-[0.8125rem] font-semibold text-ink/80">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ink text-[0.625rem] font-black text-lime tabular">
+          <li key={step} className="flex items-center gap-2.5 text-[0.8125rem] font-semibold text-on-contrast/80">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ink text-[0.625rem] font-black text-accent tabular">
               {index + 1}
             </span>
             {step}
@@ -55,7 +55,7 @@ export function ConnectPanel() {
           <p
             role="alert"
             className={`mt-3 text-[0.8125rem] leading-relaxed ${
-              nimiq.rejected ? 'text-ink/60' : 'text-negative'
+              nimiq.rejected ? 'text-on-contrast/60' : 'text-negative'
             }`}
           >
             {nimiq.rejected ? 'No problem — tap Connect when you’re ready.' : nimiq.error}

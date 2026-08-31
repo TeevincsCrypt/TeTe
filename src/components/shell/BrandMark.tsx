@@ -6,8 +6,8 @@ import { cn } from '@/components/ui/cn';
  */
 export function BrandMark({ className }: { className?: string }) {
   return (
-    <span className={cn('display select-none text-[1.375rem] text-ink', className)}>
-      Te<span className="text-lime-deep">Te</span>
+    <span className={cn('display select-none text-[1.375rem] text-on-contrast', className)}>
+      Te<span className="text-accent">Te</span>
     </span>
   );
 }
@@ -15,7 +15,7 @@ export function BrandMark({ className }: { className?: string }) {
 export function BrandMarkOnDark({ className }: { className?: string }) {
   return (
     <span className={cn('display select-none text-[1.375rem] text-text', className)}>
-      Te<span className="text-lime">Te</span>
+      Te<span className="text-accent">Te</span>
     </span>
   );
 }

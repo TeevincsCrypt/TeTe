@@ -30,10 +30,10 @@ function NimBalance() {
   const { nimiq, locale, hasNimiqRpc, refreshNimiqBalance } = useMiniApp();
 
   return (
-    <article className={cn(CARD, 'bg-lime text-ink')}>
+    <article className={cn(CARD, 'bg-accent text-ink')}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="eyebrow text-ink/55">Nimiq</p>
+          <p className="eyebrow text-ink/65">Nimiq</p>
           <p className="display mt-0.5 text-[1rem]">NIM</p>
         </div>
         {hasNimiqRpc && nimiq.address && (
@@ -89,7 +89,7 @@ function UsdtBalance() {
           <p className="display mt-0.5 text-[1rem]">USDT</p>
         </div>
         {evm.chainId && (
-          <Chip tone="neutral" className="border-white/25 bg-white/10 text-white/80">
+          <Chip tone="inverse" className="border-white/30 text-white/85">
             {chainLabel(evm.chainId)}
           </Chip>
         )}

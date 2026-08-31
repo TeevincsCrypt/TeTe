@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 
 import { CheckIcon, ChevronLeftIcon } from '@/components/shell/icons';
+import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { cn } from '@/components/ui/cn';
@@ -12,8 +13,10 @@ import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { saveDraft } from '@/lib/challenges/drafts';
 import { CHALLENGE_FORMATS, type ChallengeFormatId, type OpponentMode } from '@/lib/challenges/types';
 import { createId } from '@/lib/ids';
-import { isNimiqAddressShape } from '@/lib/nimiq/address';
+import { shortenAddress } from '@/lib/nimiq/address';
+import type { RosterPlayer } from '@/lib/roster/roster';
 import { useMiniApp } from '@/state/mini-app-provider';
+import { useRoster } from '@/state/use-roster';
 import type { StakeCurrency } from '@/types';
 
 const QUICK_STAKES: Record<StakeCurrency, readonly number[]> = {
@@ -50,13 +53,13 @@ function CreateFlow() {
   const [currency, setCurrency] = useState<StakeCurrency>('NIM');
   const [stake, setStake] = useState('');
   const [opponentMode, setOpponentMode] = useState<OpponentMode>('open');
-  const [opponent, setOpponent] = useState('');
+  const [rival, setRival] = useState<RosterPlayer | null>(null);
   const [note, setNote] = useState('');
   const [saved, setSaved] = useState(false);
 
   const stakeValue = Number.parseFloat(stake);
   const stakeValid = Number.isFinite(stakeValue) && stakeValue > 0;
-  const opponentValid = opponentMode === 'open' || isNimiqAddressShape(opponent);
+  const opponentValid = opponentMode === 'open' || rival !== null;
   const formatValid = format !== null && (format !== 'custom' || customTitle.trim().length > 0);
 
   const canContinue = [formatValid, stakeValid, opponentValid][step] ?? false;
@@ -70,7 +73,8 @@ function CreateFlow() {
       currency,
       stake: stakeValue,
       opponentMode,
-      opponent: opponentMode === 'direct' ? opponent.trim() : undefined,
+      opponent: opponentMode === 'direct' ? (rival?.address ?? undefined) : undefined,
+      opponentUsername: opponentMode === 'direct' ? (rival?.username ?? undefined) : undefined,
       note: note.trim() || undefined,
       createdAt: Date.now(),
     });
@@ -107,7 +111,7 @@ function CreateFlow() {
               key={index}
               className={cn(
                 'h-1.5 flex-1 rounded-full transition-colors duration-300',
-                index <= step ? 'bg-lime' : 'bg-line',
+                index <= step ? 'bg-accent' : 'bg-line',
               )}
             />
           ))}
@@ -138,8 +142,8 @@ function CreateFlow() {
         <OpponentStep
           mode={opponentMode}
           onMode={setOpponentMode}
-          opponent={opponent}
-          onOpponent={setOpponent}
+          rival={rival}
+          onRival={setRival}
           note={note}
           onNote={setNote}
           selfAddress={nimiq.address}
@@ -193,7 +197,7 @@ function FormatStep({
                 'rounded-[var(--radius-sticker)] border-2 p-4 text-left transition-all duration-150',
                 'active:scale-[0.97]',
                 active
-                  ? 'border-ink bg-lime text-ink shadow-[var(--shadow-sticker)]'
+                  ? 'border-ink bg-accent text-ink shadow-[var(--shadow-sticker)]'
                   : 'border-line bg-panel text-text',
               )}
             >
@@ -201,7 +205,7 @@ function FormatStep({
                 {option.icon}
               </span>
               <p className="display mt-3 text-[1rem]">{option.name}</p>
-              <p className={cn('mt-1 text-[0.6875rem] leading-snug', active ? 'text-ink/65' : 'text-faint')}>
+              <p className={cn('mt-1 text-[0.6875rem] leading-snug', active ? 'text-on-contrast/70' : 'text-faint')}>
                 {option.tagline}
               </p>
             </button>
@@ -220,7 +224,7 @@ function FormatStep({
             onChange={(event) => onCustomTitle(event.target.value)}
             placeholder="e.g. Fastest Rubik's cube solve"
             maxLength={60}
-            className="mt-2 w-full rounded-xl border-2 border-line bg-ink px-3.5 py-3 text-[0.9375rem] font-semibold text-text placeholder:text-faint focus:border-lime focus:outline-none"
+            className="mt-2 w-full rounded-xl border-2 border-line bg-panel-2 px-3.5 py-3 text-[0.9375rem] font-semibold text-text placeholder:text-faint focus:border-accent focus:outline-none"
           />
           <p className="mt-2 text-[0.6875rem] text-faint">
             Both players must agree how a winner is decided.
@@ -261,7 +265,7 @@ function StakeStep({
                 'min-h-14 rounded-full border-2 text-[1rem] font-black tracking-tight transition-all duration-150 active:scale-[0.97]',
                 active
                   ? option === 'NIM'
-                    ? 'border-ink bg-lime text-ink shadow-[var(--shadow-sticker)]'
+                    ? 'border-ink bg-accent text-ink shadow-[var(--shadow-sticker)]'
                     : 'border-ink bg-violet text-white shadow-[var(--shadow-sticker)]'
                   : 'border-line bg-panel text-muted',
               )}
@@ -297,7 +301,7 @@ function StakeStep({
               key={amount}
               type="button"
               onClick={() => onStake(String(amount))}
-              className="min-h-10 flex-1 rounded-full border-2 border-line text-[0.8125rem] font-bold text-muted transition-colors active:border-lime active:text-lime"
+              className="min-h-10 flex-1 rounded-full border-2 border-ink/15 text-[0.8125rem] font-bold text-muted transition-colors active:border-accent active:text-accent-text"
             >
               {amount}
             </button>
@@ -307,16 +311,16 @@ function StakeStep({
 
       <div
         className={cn(
-          'rounded-[var(--radius-sticker)] border-2 border-ink bg-cream p-4 transition-opacity duration-200',
+          'rounded-[var(--radius-sticker)] border-2 border-ink bg-contrast p-4 transition-opacity duration-200',
           stakeValid ? 'opacity-100' : 'opacity-40',
         )}
       >
-        <p className="eyebrow text-ink/50">Winner takes</p>
-        <p className="display mt-1 text-[2rem] text-ink tabular">
+        <p className="eyebrow text-on-contrast/60">Winner takes</p>
+        <p className="display mt-1 text-[2rem] text-on-contrast tabular">
           {stakeValid ? (stakeValue * 2).toLocaleString() : '0'}
           <span className="ml-2 text-[1rem]">{currency}</span>
         </p>
-        <p className="mt-1 text-[0.75rem] font-semibold text-ink/60">
+        <p className="mt-1 text-[0.75rem] font-semibold text-on-contrast/70">
           Both players stake {stakeValid ? stakeValue.toLocaleString() : '0'} {currency}.
         </p>
       </div>
@@ -327,24 +331,22 @@ function StakeStep({
 function OpponentStep({
   mode,
   onMode,
-  opponent,
-  onOpponent,
+  rival,
+  onRival,
   note,
   onNote,
   selfAddress,
 }: {
   mode: OpponentMode;
   onMode: (mode: OpponentMode) => void;
-  opponent: string;
-  onOpponent: (value: string) => void;
+  rival: RosterPlayer | null;
+  onRival: (player: RosterPlayer | null) => void;
   note: string;
   onNote: (value: string) => void;
   selfAddress: string | null;
 }) {
-  const isSelf =
-    selfAddress !== null &&
-    opponent.replace(/\s+/g, '').toUpperCase() === selfAddress.replace(/\s+/g, '').toUpperCase();
-  const showInvalid = mode === 'direct' && opponent.length > 0 && !isNimiqAddressShape(opponent);
+  const { players, add } = useRoster();
+  const [adding, setAdding] = useState(false);
 
   return (
     <div className="space-y-3">
@@ -360,37 +362,82 @@ function OpponentStep({
           active={mode === 'direct'}
           onSelect={() => onMode('direct')}
           glyph="🎯"
-          title="Challenge someone"
-          body="Send it straight to one Nimiq address."
+          title="Challenge a player"
+          body="Send it to someone on your roster, by username."
         />
       </div>
 
       {mode === 'direct' && (
-        <Sticker tone="panel" className="animate-[var(--animate-pop)]">
-          <label htmlFor="opponent" className="eyebrow text-faint">
-            Opponent address
-          </label>
-          <input
-            id="opponent"
-            value={opponent}
-            onChange={(event) => onOpponent(event.target.value)}
-            placeholder="NQ.. .. .. .."
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-            className="mt-2 w-full rounded-xl border-2 border-line bg-ink px-3.5 py-3 font-mono text-[0.8125rem] text-text placeholder:text-faint focus:border-lime focus:outline-none"
-          />
-          {showInvalid && (
-            <p className="mt-2 text-[0.75rem] font-semibold text-negative">
-              That does not look like a Nimiq address.
-            </p>
+        <div className="space-y-3 animate-[var(--animate-pop)]">
+          {players.length > 0 && (
+            <Sticker tone="panel">
+              <Eyebrow className="text-faint">Your roster</Eyebrow>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {players.map((player) => {
+                  const active = rival?.id === player.id;
+                  return (
+                    <button
+                      key={player.id}
+                      type="button"
+                      onClick={() => onRival(active ? null : player)}
+                      aria-pressed={active}
+                      className={cn(
+                        'flex min-h-11 items-center gap-2 rounded-full border-2 px-3 pr-4',
+                        'text-[0.8125rem] font-bold transition-all duration-150 active:scale-95',
+                        active
+                          ? 'border-ink bg-accent text-on-accent shadow-[var(--shadow-sticker-sm)]'
+                          : 'border-ink/15 bg-panel-2 text-muted',
+                      )}
+                    >
+                      <Avatar address={player.address} size={24} />@{player.username}
+                    </button>
+                  );
+                })}
+              </div>
+            </Sticker>
           )}
-          {isSelf && (
-            <p className="mt-2 text-[0.75rem] font-semibold text-gold">
-              That is your own address — you cannot challenge yourself.
-            </p>
+
+          {rival && (
+            <div className="rounded-[var(--radius-sticker)] border-2 border-ink bg-contrast p-4 animate-[var(--animate-pop)]">
+              <Eyebrow className="text-on-contrast/60">Opponent</Eyebrow>
+              <div className="mt-2.5 flex items-center gap-3">
+                <Avatar address={rival.address} size={40} />
+                <div className="min-w-0">
+                  <p className="display text-[1.125rem] text-on-contrast">@{rival.username}</p>
+                  <p className="truncate font-mono text-[0.6875rem] text-on-contrast/60">
+                    {shortenAddress(rival.address)}
+                  </p>
+                </div>
+              </div>
+            </div>
           )}
-        </Sticker>
+
+          {adding ? (
+            <AddPlayerForm
+              selfAddress={selfAddress}
+              onCancel={() => setAdding(false)}
+              onAdd={(username, address) => {
+                const result = add(username, address);
+                if (result.ok) {
+                  onRival(result.player);
+                  setAdding(false);
+                }
+                return result;
+              }}
+            />
+          ) : (
+            <Button variant="outline" onClick={() => setAdding(true)}>
+              + Add a player
+            </Button>
+          )}
+
+          {players.length === 0 && !adding && (
+            <PhaseNote>
+              TeTe has no global username directory yet, so you add a player once with
+              their address and can challenge them by name from then on.
+            </PhaseNote>
+          )}
+        </div>
       )}
 
       <Sticker tone="panel">
@@ -404,11 +451,102 @@ function OpponentStep({
           rows={3}
           maxLength={200}
           placeholder="Best of three. No takebacks."
-          className="mt-2 w-full resize-none rounded-xl border-2 border-line bg-ink px-3.5 py-3 text-[0.875rem] text-text placeholder:text-faint focus:border-lime focus:outline-none"
+          className="mt-2 w-full resize-none rounded-xl border-2 border-line bg-panel-2 px-3.5 py-3 text-[0.875rem] text-text placeholder:text-faint focus:border-accent focus:outline-none"
         />
         <p className="mt-1 text-right text-[0.6875rem] text-faint tabular">{note.length}/200</p>
       </Sticker>
     </div>
+  );
+}
+
+/**
+ * Saving a new opponent. The address is required exactly once — TeTe cannot
+ * resolve a username to an address on its own, so the first introduction has to
+ * carry one. After that the player is reachable by name.
+ */
+function AddPlayerForm({
+  onAdd,
+  onCancel,
+  selfAddress,
+}: {
+  onAdd: (username: string, address: string) => { ok: boolean; error?: string };
+  onCancel: () => void;
+  selfAddress: string | null;
+}) {
+  const [username, setUsername] = useState('');
+  const [address, setAddress] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const isSelf =
+    selfAddress !== null &&
+    address.replace(/\s+/g, '').toUpperCase() === selfAddress.replace(/\s+/g, '').toUpperCase();
+
+  function submit() {
+    if (isSelf) {
+      setError('That is your own address — you cannot challenge yourself.');
+      return;
+    }
+    const result = onAdd(username, address);
+    if (!result.ok) setError(result.error ?? 'Could not add that player.');
+  }
+
+  return (
+    <Sticker tone="panel" className="animate-[var(--animate-pop)]">
+      <Eyebrow className="text-faint">New player</Eyebrow>
+
+      <label htmlFor="username" className="sr-only">
+        Username
+      </label>
+      <div className="mt-2.5 flex items-center rounded-xl border-2 border-line bg-panel-2 pl-3.5 focus-within:border-accent">
+        <span className="text-[0.9375rem] font-black text-faint">@</span>
+        <input
+          id="username"
+          value={username}
+          onChange={(event) => {
+            setUsername(event.target.value);
+            setError(null);
+          }}
+          placeholder="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={16}
+          className="w-full min-w-0 bg-transparent px-1.5 py-3 text-[0.9375rem] font-bold text-text placeholder:text-faint focus:outline-none"
+        />
+      </div>
+
+      <label htmlFor="address" className="sr-only">
+        Their Nimiq address
+      </label>
+      <input
+        id="address"
+        value={address}
+        onChange={(event) => {
+          setAddress(event.target.value);
+          setError(null);
+        }}
+        placeholder="NQ.. .. .. .."
+        autoCapitalize="characters"
+        autoCorrect="off"
+        spellCheck={false}
+        className="mt-2 w-full rounded-xl border-2 border-line bg-panel-2 px-3.5 py-3 font-mono text-[0.8125rem] text-text placeholder:text-faint focus:border-accent focus:outline-none"
+      />
+
+      {error && (
+        <p role="alert" className="mt-2 text-[0.75rem] font-semibold text-negative">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-3 flex gap-2">
+        <Button variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button onClick={submit} disabled={!username.trim() || !address.trim()}>
+          Save player
+        </Button>
+      </div>
+    </Sticker>
   );
 }
 
@@ -432,7 +570,7 @@ function ModeOption({
       aria-pressed={active}
       className={cn(
         'flex w-full items-center gap-3.5 rounded-[var(--radius-sticker)] border-2 p-4 text-left transition-all duration-150 active:scale-[0.98]',
-        active ? 'border-ink bg-cream text-ink shadow-[var(--shadow-sticker)]' : 'border-line bg-panel text-text',
+        active ? 'border-ink bg-contrast text-on-contrast shadow-[var(--shadow-sticker)]' : 'border-line bg-panel text-text',
       )}
     >
       <span aria-hidden className="text-[1.5rem] leading-none">
@@ -440,14 +578,14 @@ function ModeOption({
       </span>
       <span className="flex-1">
         <span className="block text-[0.9375rem] font-black tracking-tight">{title}</span>
-        <span className={cn('mt-0.5 block text-[0.75rem] leading-snug', active ? 'text-ink/65' : 'text-faint')}>
+        <span className={cn('mt-0.5 block text-[0.75rem] leading-snug', active ? 'text-on-contrast/70' : 'text-faint')}>
           {body}
         </span>
       </span>
       <span
         className={cn(
           'flex size-6 shrink-0 items-center justify-center rounded-full border-2',
-          active ? 'border-ink bg-ink text-lime' : 'border-line',
+          active ? 'border-on-contrast bg-on-contrast text-ink' : 'border-line',
         )}
       >
         {active && <CheckIcon className="size-3.5" strokeWidth={3} />}
@@ -461,7 +599,7 @@ function SavedConfirmation({ onDone }: { onDone: () => void }) {
     <div className="flex min-h-[70dvh] flex-col items-center justify-center text-center">
       <span
         aria-hidden
-        className="flex size-24 items-center justify-center rounded-full border-2 border-ink bg-lime text-[2.5rem] shadow-[var(--shadow-sticker)] animate-[var(--animate-pop)]"
+        className="flex size-24 items-center justify-center rounded-full border-2 border-ink bg-accent text-[2.5rem] shadow-[var(--shadow-sticker)] animate-[var(--animate-pop)]"
       >
         ⚔️
       </span>

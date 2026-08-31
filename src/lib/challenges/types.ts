@@ -61,6 +61,8 @@ export interface ChallengeDraft {
   opponentMode: OpponentMode;
   /** Opponent address when opponentMode is 'direct'. */
   opponent?: string;
+  /** The roster nickname the opponent was chosen by, kept for display. */
+  opponentUsername?: string;
   note?: string;
   createdAt: number;
 }

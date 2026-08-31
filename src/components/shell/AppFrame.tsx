@@ -22,7 +22,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
   const { host } = useMiniApp();
 
   return (
-    <div className="flex min-h-dvh flex-col bg-ink">
+    <div className="flex min-h-dvh flex-col bg-bg">
       <TopBar />
 
       {host === 'unavailable' && <OutsideHostBanner />}

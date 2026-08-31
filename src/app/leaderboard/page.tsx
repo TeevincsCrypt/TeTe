@@ -26,7 +26,7 @@ export default function LeaderboardPage() {
   return (
     <div className="space-y-5 pt-2">
       <header className="relative overflow-hidden rounded-[var(--radius-sticker)] border-2 border-ink bg-panel px-5 pb-6 pt-6">
-        <Sunburst className="-right-20 -top-20 size-56 text-gold/[0.08]" />
+        <Sunburst className="-right-20 -top-20 size-56 text-gold/[0.14]" />
         <div className="relative">
           <Chip tone="gold" dot>
             Season 01

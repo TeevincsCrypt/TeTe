@@ -5,14 +5,14 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 import { cn } from './cn';
 
-type Variant = 'primary' | 'cream' | 'outline' | 'ghost' | 'violet';
+type Variant = 'primary' | 'contrast' | 'outline' | 'ghost' | 'violet';
 type Size = 'md' | 'lg';
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-lime text-ink border-ink shadow-[var(--shadow-sticker)]',
-  cream: 'bg-cream text-ink border-ink shadow-[var(--shadow-sticker)]',
+  primary: 'bg-accent text-on-accent border-ink shadow-[var(--shadow-sticker)]',
+  contrast: 'bg-contrast text-on-contrast border-ink shadow-[var(--shadow-sticker)]',
   violet: 'bg-violet text-white border-ink shadow-[var(--shadow-sticker)]',
-  outline: 'bg-transparent text-text border-line hover:border-lime hover:text-lime shadow-none',
+  outline: 'bg-transparent text-text border-ink/25 hover:border-accent hover:text-accent-text shadow-none',
   ghost: 'bg-transparent text-muted border-transparent shadow-none hover:text-text',
 };
 
