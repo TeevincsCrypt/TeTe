@@ -2,15 +2,14 @@
  * The player's roster — opponents they have saved, so a challenge can be
  * addressed by username instead of a 36-character address.
  *
- * An important limit, stated plainly because the UI has to be honest about it:
- * TeTe has no backend and no global handle registry, so a username here is a
- * nickname THIS player assigned to an address on THIS device. It is not a
- * claimed identity and it is not resolvable for anyone else. Adding a player
- * therefore needs their address once; after that they are reachable by name.
+ * A username here is a nickname THIS player assigned to an address on THIS
+ * device — a shortcut, not an identity. It is not what anyone else sees.
  *
- * When a backend arrives, this becomes the local cache in front of a real
- * registry and the address requirement goes away — the shape of the record
- * stays the same.
+ * The real handles live in the server directory (`lib/server/players.ts`),
+ * where a name is claimed by signing with the address it points at and is
+ * resolvable by every player. Create resolves typed names through that
+ * directory, so nobody needs an address to challenge somebody. This roster
+ * survives as a local convenience in front of it.
  */
 import { createId } from '@/lib/ids';
 import { compactAddress, isNimiqAddressShape } from '@/lib/nimiq/address';

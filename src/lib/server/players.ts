@@ -19,7 +19,10 @@ export interface PlayerRecord {
 }
 
 const nameKey = (username: string) => `player:name:${usernameKey(username)}`;
-const addrKey = (address: string) => `player:addr:${address.replace(/\s+/g, '')}`;
+// Addresses arrive both spaced (`listAccounts()`, the signature check) and
+// compact (stored records), so the key is normalised both ways — otherwise the
+// same player reads back as two different people depending on the caller.
+const addrKey = (address: string) => `player:addr:${address.replace(/\s+/g, '').toUpperCase()}`;
 
 export async function lookupUsername(username: string): Promise<PlayerRecord | null> {
   if (!USERNAME_PATTERN.test(username.trim())) return null;

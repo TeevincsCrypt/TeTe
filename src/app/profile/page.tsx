@@ -13,7 +13,9 @@ import { PhaseNote } from '@/components/ui/PhaseNote';
 import { StatTile } from '@/components/ui/StatTile';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { ConnectPanel } from '@/components/wallet/ConnectPanel';
+import { ApiError, claimUsername, myDirectoryName } from '@/lib/api/client';
 import { copyText } from '@/lib/clipboard';
+import { USERNAME_PATTERN } from '@/lib/roster/roster';
 import { preparePhoto } from '@/lib/profile/local-profile';
 import { NIMIQ_NETWORK_LABEL } from '@/lib/config/env';
 import { chainLabel } from '@/lib/evm/chains';
@@ -29,10 +31,12 @@ import { useLocalProfile } from '@/state/use-local-profile';
 /**
  * The player.
  *
- * Identity here is the connected Nimiq address — TeTe has no accounts and no
- * backend. The display name is local decoration that never leaves the device;
- * the avatar is generated from the address itself. Reputation counters are real
- * and sit at zero, because no match has been played.
+ * Identity here is the connected Nimiq address — TeTe has no passwords and no
+ * sign-up. Two names sit on top of it and they are deliberately different
+ * things: the display name is local decoration that never leaves the device,
+ * while the claimed TeTe name is registered in the directory and is what an
+ * opponent types to challenge you. The avatar is generated from the address
+ * itself. Reputation counters are real and sit at zero until matches settle.
  */
 export default function ProfilePage() {
   const { nimiq, evm, locale } = useMiniApp();
@@ -154,11 +158,13 @@ export default function ProfilePage() {
           </Chip>
 
           <p className="mt-4 text-[0.6875rem] leading-snug text-on-contrast/55">
-            Share your address so friends can add you as{' '}
-            <span className="font-bold text-on-contrast/80">@{handle}</span> on their roster.
+            This name decorates this device. Claim a TeTe name below to be
+            challenged by it.
           </p>
         </div>
       </Sticker>
+
+      <DirectoryName address={nimiq.address} suggestion={displayName ?? ''} />
 
       <section hidden={Boolean(photo)}>
         <Eyebrow className="mb-3 text-faint">Look</Eyebrow>
@@ -311,8 +317,8 @@ export default function ProfilePage() {
         )}
 
         <PhaseNote className="mt-3">
-          Usernames are nicknames you assign on this device. TeTe has no global handle
-          registry yet, so adding a player needs their address once.
+          Shortcuts saved on this device. To challenge someone who is not here, type
+          their claimed TeTe name in Create — the directory resolves it.
         </PhaseNote>
       </section>
 
@@ -358,6 +364,160 @@ export default function ProfilePage() {
         </p>
       </Sticker>
     </div>
+  );
+}
+
+/**
+ * The claimed TeTe name.
+ *
+ * This is the one piece of identity that is not local. The display name above
+ * decorates this device; this name lives in the directory that every other
+ * player searches, and it is what somebody types to challenge you — so until
+ * it is claimed here, nobody can find you by name no matter what the device
+ * calls you.
+ *
+ * Claiming signs a message with the wallet, proving control of the address the
+ * name will point at. A name cannot be pointed at a wallet you do not hold.
+ */
+function DirectoryName({ address, suggestion }: { address: string; suggestion: string }) {
+  // undefined = still asking, null = nothing claimed yet.
+  const [claimed, setClaimed] = useState<string | null | undefined>(undefined);
+  const [configured, setConfigured] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    myDirectoryName(address)
+      .then((player) => {
+        if (!cancelled) setClaimed(player?.username ?? null);
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        if (cause instanceof ApiError && cause.status === 503) setConfigured(false);
+        setClaimed(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
+
+  async function claim() {
+    const wanted = name.trim();
+    if (!USERNAME_PATTERN.test(wanted)) {
+      setError('Names are 3–16 letters, numbers or underscores.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const player = await claimUsername(address, wanted);
+      setClaimed(player.username);
+      setEditing(false);
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'Could not claim that name.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!configured) {
+    return (
+      <section>
+        <Eyebrow className="mb-3 text-faint">Your TeTe name</Eyebrow>
+        <Sticker tone="panel">
+          <p className="text-[0.8125rem] leading-relaxed text-muted">
+            The player directory is not configured on this deployment, so names cannot be
+            claimed here yet.
+          </p>
+        </Sticker>
+      </section>
+    );
+  }
+
+  return (
+    <section>
+      <Eyebrow className="mb-3 text-faint">Your TeTe name</Eyebrow>
+      <Sticker tone="panel">
+        {claimed === undefined ? (
+          <div className="h-6 w-32 rounded-full bg-panel-2 animate-[var(--animate-shimmer)]" />
+        ) : editing || claimed === null ? (
+          <>
+            <label htmlFor="tete-name" className="text-[0.8125rem] font-bold">
+              {claimed === null ? 'Claim a name' : 'Change your name'}
+            </label>
+            <p className="mt-1 text-[0.75rem] leading-relaxed text-muted">
+              This is what an opponent types to challenge you. It has to be unique, and
+              claiming it asks Nimiq Pay to sign — proving the name is yours.
+            </p>
+            <div className="mt-3 flex items-center rounded-xl border border-line bg-panel-2 pl-3.5 focus-within:border-accent">
+              <span className="text-[1rem] font-black text-faint">@</span>
+              <input
+                id="tete-name"
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setError(null);
+                }}
+                placeholder={suggestion || 'yourname'}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                maxLength={16}
+                className="w-full min-w-0 bg-transparent px-1.5 py-3 text-[1rem] font-bold text-text placeholder:text-faint focus:outline-none"
+              />
+            </div>
+
+            {error && (
+              <p role="alert" className="mt-2 text-[0.75rem] font-semibold text-negative">
+                {error}
+              </p>
+            )}
+
+            <div className="mt-3 flex gap-2">
+              {claimed !== null && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEditing(false);
+                    setError(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              )}
+              <Button onClick={claim} loading={busy} disabled={name.trim().length < 3}>
+                {busy ? 'Signing…' : 'Claim name'}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="display truncate text-[1.25rem]">@{claimed}</p>
+                <p className="mt-0.5 text-[0.6875rem] text-faint">
+                  Opponents can challenge you by this name.
+                </p>
+              </div>
+              <Chip tone="positive">Claimed</Chip>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setName(claimed);
+                setEditing(true);
+              }}
+              className="mt-3 min-h-9 text-[0.75rem] font-bold text-accent-text underline underline-offset-2"
+            >
+              Change name
+            </button>
+          </>
+        )}
+      </Sticker>
+    </section>
   );
 }
 

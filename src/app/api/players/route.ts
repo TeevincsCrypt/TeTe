@@ -2,16 +2,26 @@ import { NextResponse } from 'next/server';
 
 import { verifySignedRequest } from '@/lib/server/auth';
 import { hasDurableStore } from '@/lib/server/env';
-import { claimUsername, lookupUsername } from '@/lib/server/players';
+import { claimUsername, lookupAddress, lookupUsername } from '@/lib/server/players';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** Look a player up by username, so a challenge can be addressed by name. */
+/**
+ * Look a player up — by username (`?u=`), so a challenge can be addressed by
+ * name, or by address (`?address=`), which is how a player finds out which
+ * name they themselves have claimed on a device that does not know yet.
+ *
+ * Both directions return the same public pair. Neither needs a signature: a
+ * username and its address are exactly what players hand each other in order
+ * to be challenged.
+ */
 export async function GET(request: Request) {
-  const username = new URL(request.url).searchParams.get('u');
-  if (!username) {
-    return NextResponse.json({ error: 'Missing username.' }, { status: 400 });
+  const params = new URL(request.url).searchParams;
+  const username = params.get('u');
+  const address = params.get('address');
+  if (!username && !address) {
+    return NextResponse.json({ error: 'Missing username or address.' }, { status: 400 });
   }
   if (!hasDurableStore) {
     return NextResponse.json(
@@ -20,7 +30,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const player = await lookupUsername(username);
+  const player = username ? await lookupUsername(username) : await lookupAddress(address!);
   if (!player) return NextResponse.json({ error: 'No player with that name.' }, { status: 404 });
   return NextResponse.json({ player: { username: player.username, address: player.address } });
 }
