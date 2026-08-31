@@ -23,7 +23,7 @@ export const CHALLENGE_FORMATS = [
   },
   {
     id: 'fifa',
-    name: 'Sports Sim',
+    name: 'Sports',
     tagline: 'FIFA, NBA2K, F1.',
     icon: '🎮',
     accent: 'violet',

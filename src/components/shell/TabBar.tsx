@@ -28,7 +28,7 @@ export function TabBar() {
   return (
     <nav
       aria-label="Primary"
-      className="sticky bottom-0 z-20 border-t-2 border-ink bg-panel/95 backdrop-blur-md"
+      className="sticky bottom-0 z-20 border-t border-ink/12 bg-bg/95 backdrop-blur-md"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <ul className="mx-auto flex w-full max-w-md items-end">
@@ -47,10 +47,9 @@ export function TabBar() {
                 >
                   <span
                     className={cn(
-                      'flex size-12 items-center justify-center rounded-full border-2 border-ink bg-accent text-ink',
-                      'shadow-[var(--shadow-sticker-sm)] transition-transform duration-150',
-                      'active:translate-x-[3px] active:translate-y-[3px] active:shadow-none',
-                      active && 'ring-2 ring-ink ring-offset-2 ring-offset-panel',
+                      'flex size-12 items-center justify-center rounded-full bg-ink text-accent',
+                      'transition-transform duration-150 active:scale-90',
+                      active && 'ring-2 ring-accent ring-offset-2 ring-offset-bg',
                     )}
                   >
                     <Icon className="size-6" strokeWidth={2.5} />

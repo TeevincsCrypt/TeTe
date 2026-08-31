@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { CheckIcon, TrashIcon } from '@/components/shell/icons';
+import { CheckIcon, FlameIcon, SwordsIcon, TargetIcon, TrashIcon, TrophyIcon } from '@/components/shell/icons';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
@@ -62,9 +62,9 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-5 pt-2">
-      <Sticker tone="contrast" className="text-center">
+      <Sticker tone="contrast" className="rounded-3xl p-7 text-center">
         <div className="flex flex-col items-center">
-          <Avatar address={nimiq.address} size={80} className="shadow-[var(--shadow-sticker-sm)]" />
+          <Avatar address={nimiq.address} size={78} />
 
           {editing ? (
             <div className="mt-4 w-full">
@@ -74,7 +74,7 @@ export default function ProfilePage() {
                 maxLength={20}
                 autoFocus
                 placeholder={handle}
-                className="w-full rounded-xl border-2 border-on-contrast/20 bg-contrast-2 px-3.5 py-3 text-center text-[1.125rem] font-black tracking-tight text-on-contrast focus:outline-none"
+                className="w-full rounded-xl border border-on-contrast/25 bg-on-contrast/10 px-3.5 py-3 text-center text-[1.125rem] font-black tracking-tight text-on-contrast focus:outline-none"
               />
               <div className="mt-3 flex gap-2">
                 <Button
@@ -124,10 +124,10 @@ export default function ProfilePage() {
       <section>
         <Eyebrow className="mb-3 text-faint">Record</Eyebrow>
         <div className="grid grid-cols-2 gap-3">
-          <StatTile label="Played" value={0} icon="⚔️" />
-          <StatTile label="Won" value={0} accent="accent" icon="🏆" />
-          <StatTile label="Win rate" value="—" icon="🎯" />
-          <StatTile label="Best streak" value={0} accent="flame" icon="🔥" />
+          <StatTile label="Played" value={0} icon={<SwordsIcon className="size-3.5" />} />
+          <StatTile label="Won" value={0} accent="accent" icon={<TrophyIcon className="size-3.5" />} />
+          <StatTile label="Win rate" value="—" icon={<TargetIcon className="size-3.5" />} />
+          <StatTile label="Best streak" value={0} accent="flame" icon={<FlameIcon className="size-3.5" />} />
         </div>
         <PhaseNote className="mt-3">
           Real counters at zero. Nothing is recorded until challenges can be settled.
@@ -197,7 +197,7 @@ export default function ProfilePage() {
             {players.map((player) => (
               <div
                 key={player.id}
-                className="flex items-center gap-3 rounded-2xl border-2 border-ink/12 bg-panel p-3"
+                className="flex items-center gap-3 rounded-2xl bg-panel-2 p-3"
               >
                 <Avatar address={player.address} size={38} />
                 <div className="min-w-0 flex-1">

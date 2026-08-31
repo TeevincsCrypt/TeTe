@@ -32,7 +32,7 @@ wallet, no placeholder balance and no simulated transaction anywhere in this cod
 | Challenge builder | ✅ local only | Real 3-step form, saves an unfunded local draft |
 | Local display name + avatar | ✅ | Name stored on device, avatar derived from the address |
 | Challenge by username | ✅ local only | Saved roster of opponents; no global handle registry yet |
-| Arcade — 3 playable skill games | ✅ | Reflex, Recall, Sprint. Real play, real scoring |
+| Arcade — 3 playable arcade games | ✅ | Crossing, Drift, Slice. Canvas game loops, touch input |
 | Daily check-in + streak | ✅ local only | Real streak, pays XP |
 | XP progression | ✅ local only | **XP is not NIM.** See [Rewards](#rewards-and-why-xp-is-not-nim) |
 | NIM/token rewards | ❌ not possible yet | Needs a funded treasury and a backend that can sign payouts |
@@ -201,6 +201,34 @@ rejects a duplicate username and refuses to save one address under two names, so
 a single opponent cannot appear twice. When a backend arrives this becomes the
 local cache in front of a real registry and the address step goes away — the
 record shape does not change.
+
+### The arcade games are original
+
+The three games sit in familiar arcade *genres* — road-crossing, one-touch
+driving, swipe-to-slice — because genre mechanics belong to nobody. What is not
+reproduced is any name, character, artwork, sound or level from an existing
+commercial title. Titles like Pac-Man, Fruit Ninja, Crossy Road, Helix Jump and
+Drift Boss are trademarked properties of their publishers; cloning one into a
+public repository would be straightforward infringement, competition entry or
+not. So these are written from scratch, with their own names and art.
+
+Each runs on a shared canvas harness (`components/arcade/GameCanvas.tsx`) that
+handles device-pixel sizing, a clamped animation loop and pointer input. Game
+state lives in a ref and is mutated inside the frame callback, so a running game
+never triggers a React render — sixty renders a second is the quickest way to
+make a WebView feel cheap.
+
+### The login intro
+
+Connecting plays a short intro once per session, skippable on tap and collapsed
+to a brief fade under `prefers-reduced-motion`.
+
+It is a scripted motion sequence rather than a bundled film: there is no source
+footage in this repository, and shipping video would mean pushing megabytes into
+a WebView on a phone connection. Every frame is composited from type and colour,
+so it weighs nothing and stays sharp at any density. To use real footage
+instead, point `NEXT_PUBLIC_INTRO_VIDEO` at it — the timing and skip behaviour
+are unchanged.
 
 ### Rewards, and why XP is not NIM
 

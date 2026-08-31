@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 
-import { CheckIcon, ChevronLeftIcon } from '@/components/shell/icons';
+import { CheckIcon, ChevronLeftIcon, GlobeIcon, SwordsIcon, TargetIcon } from '@/components/shell/icons';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
@@ -110,8 +110,8 @@ function CreateFlow() {
             <span
               key={index}
               className={cn(
-                'h-1.5 flex-1 rounded-full transition-colors duration-300',
-                index <= step ? 'bg-accent' : 'bg-line',
+                'h-1 flex-1 rounded-full transition-colors duration-300',
+                index <= step ? 'bg-ink' : 'bg-ink/12',
               )}
             />
           ))}
@@ -201,10 +201,7 @@ function FormatStep({
                   : 'border-line bg-panel text-text',
               )}
             >
-              <span aria-hidden className="text-[1.5rem] leading-none">
-                {option.icon}
-              </span>
-              <p className="display mt-3 text-[1rem]">{option.name}</p>
+              <p className="text-[1.0625rem] font-black tracking-tight">{option.name}</p>
               <p className={cn('mt-1 text-[0.6875rem] leading-snug', active ? 'text-on-contrast/70' : 'text-faint')}>
                 {option.tagline}
               </p>
@@ -224,7 +221,7 @@ function FormatStep({
             onChange={(event) => onCustomTitle(event.target.value)}
             placeholder="e.g. Fastest Rubik's cube solve"
             maxLength={60}
-            className="mt-2 w-full rounded-xl border-2 border-line bg-panel-2 px-3.5 py-3 text-[0.9375rem] font-semibold text-text placeholder:text-faint focus:border-accent focus:outline-none"
+            className="mt-2 w-full rounded-xl border border-ink/12 bg-panel-2 px-3.5 py-3 text-[0.9375rem] font-semibold text-text placeholder:text-faint focus:border-accent focus:outline-none"
           />
           <p className="mt-2 text-[0.6875rem] text-faint">
             Both players must agree how a winner is decided.
@@ -262,7 +259,7 @@ function StakeStep({
               onClick={() => onCurrency(option)}
               aria-pressed={active}
               className={cn(
-                'min-h-14 rounded-full border-2 text-[1rem] font-black tracking-tight transition-all duration-150 active:scale-[0.97]',
+                'min-h-14 rounded-full text-[1rem] font-black tracking-tight transition-all duration-150 active:scale-[0.97]',
                 active
                   ? option === 'NIM'
                     ? 'border-ink bg-accent text-ink shadow-[var(--shadow-sticker)]'
@@ -311,7 +308,7 @@ function StakeStep({
 
       <div
         className={cn(
-          'rounded-[var(--radius-sticker)] border-2 border-ink bg-contrast p-4 transition-opacity duration-200',
+          'rounded-2xl bg-ink p-5 transition-opacity duration-200',
           stakeValid ? 'opacity-100' : 'opacity-40',
         )}
       >
@@ -354,14 +351,14 @@ function OpponentStep({
         <ModeOption
           active={mode === 'open'}
           onSelect={() => onMode('open')}
-          glyph="🌐"
+          glyph={<GlobeIcon className="size-5" />}
           title="Open challenge"
           body="Anyone can accept it from the marketplace."
         />
         <ModeOption
           active={mode === 'direct'}
           onSelect={() => onMode('direct')}
-          glyph="🎯"
+          glyph={<TargetIcon className="size-5" />}
           title="Challenge a player"
           body="Send it to someone on your roster, by username."
         />
@@ -382,11 +379,11 @@ function OpponentStep({
                       onClick={() => onRival(active ? null : player)}
                       aria-pressed={active}
                       className={cn(
-                        'flex min-h-11 items-center gap-2 rounded-full border-2 px-3 pr-4',
+                        'flex min-h-11 items-center gap-2 rounded-full px-3 pr-4',
                         'text-[0.8125rem] font-bold transition-all duration-150 active:scale-95',
                         active
-                          ? 'border-ink bg-accent text-on-accent shadow-[var(--shadow-sticker-sm)]'
-                          : 'border-ink/15 bg-panel-2 text-muted',
+                          ? 'bg-accent text-on-accent'
+                          : 'bg-panel-2 text-muted',
                       )}
                     >
                       <Avatar address={player.address} size={24} />@{player.username}
@@ -398,7 +395,7 @@ function OpponentStep({
           )}
 
           {rival && (
-            <div className="rounded-[var(--radius-sticker)] border-2 border-ink bg-contrast p-4 animate-[var(--animate-pop)]">
+            <div className="rounded-2xl bg-ink p-4 animate-[var(--animate-pop)]">
               <Eyebrow className="text-on-contrast/60">Opponent</Eyebrow>
               <div className="mt-2.5 flex items-center gap-3">
                 <Avatar address={rival.address} size={40} />
@@ -451,7 +448,7 @@ function OpponentStep({
           rows={3}
           maxLength={200}
           placeholder="Best of three. No takebacks."
-          className="mt-2 w-full resize-none rounded-xl border-2 border-line bg-panel-2 px-3.5 py-3 text-[0.875rem] text-text placeholder:text-faint focus:border-accent focus:outline-none"
+          className="mt-2 w-full resize-none rounded-xl border border-ink/12 bg-panel-2 px-3.5 py-3 text-[0.875rem] text-text placeholder:text-faint focus:border-accent focus:outline-none"
         />
         <p className="mt-1 text-right text-[0.6875rem] text-faint tabular">{note.length}/200</p>
       </Sticker>
@@ -497,7 +494,7 @@ function AddPlayerForm({
       <label htmlFor="username" className="sr-only">
         Username
       </label>
-      <div className="mt-2.5 flex items-center rounded-xl border-2 border-line bg-panel-2 pl-3.5 focus-within:border-accent">
+      <div className="mt-2.5 flex items-center rounded-xl border border-ink/12 bg-panel-2 pl-3.5 focus-within:border-accent">
         <span className="text-[0.9375rem] font-black text-faint">@</span>
         <input
           id="username"
@@ -529,7 +526,7 @@ function AddPlayerForm({
         autoCapitalize="characters"
         autoCorrect="off"
         spellCheck={false}
-        className="mt-2 w-full rounded-xl border-2 border-line bg-panel-2 px-3.5 py-3 font-mono text-[0.8125rem] text-text placeholder:text-faint focus:border-accent focus:outline-none"
+        className="mt-2 w-full rounded-xl border border-ink/12 bg-panel-2 px-3.5 py-3 font-mono text-[0.8125rem] text-text placeholder:text-faint focus:border-accent focus:outline-none"
       />
 
       {error && (
@@ -559,7 +556,7 @@ function ModeOption({
 }: {
   active: boolean;
   onSelect: () => void;
-  glyph: string;
+  glyph: React.ReactNode;
   title: string;
   body: string;
 }) {
@@ -569,11 +566,17 @@ function ModeOption({
       onClick={onSelect}
       aria-pressed={active}
       className={cn(
-        'flex w-full items-center gap-3.5 rounded-[var(--radius-sticker)] border-2 p-4 text-left transition-all duration-150 active:scale-[0.98]',
-        active ? 'border-ink bg-contrast text-on-contrast shadow-[var(--shadow-sticker)]' : 'border-line bg-panel text-text',
+        'flex w-full items-center gap-3.5 rounded-2xl p-4 text-left transition-all duration-150 active:scale-[0.98]',
+        active ? 'bg-ink text-on-contrast' : 'bg-panel-2 text-text',
       )}
     >
-      <span aria-hidden className="text-[1.5rem] leading-none">
+      <span
+        aria-hidden
+        className={cn(
+          'flex size-10 shrink-0 items-center justify-center rounded-xl',
+          active ? 'bg-on-contrast/15 text-accent' : 'bg-panel-2 text-muted',
+        )}
+      >
         {glyph}
       </span>
       <span className="flex-1">
@@ -584,8 +587,8 @@ function ModeOption({
       </span>
       <span
         className={cn(
-          'flex size-6 shrink-0 items-center justify-center rounded-full border-2',
-          active ? 'border-on-contrast bg-on-contrast text-ink' : 'border-line',
+          'flex size-6 shrink-0 items-center justify-center rounded-full border',
+          active ? 'border-accent bg-accent text-ink' : 'border-ink/20',
         )}
       >
         {active && <CheckIcon className="size-3.5" strokeWidth={3} />}
@@ -599,9 +602,9 @@ function SavedConfirmation({ onDone }: { onDone: () => void }) {
     <div className="flex min-h-[70dvh] flex-col items-center justify-center text-center">
       <span
         aria-hidden
-        className="flex size-24 items-center justify-center rounded-full border-2 border-ink bg-accent text-[2.5rem] shadow-[var(--shadow-sticker)] animate-[var(--animate-pop)]"
+        className="flex size-20 items-center justify-center rounded-3xl bg-ink text-accent animate-[var(--animate-pop)]"
       >
-        ⚔️
+        <SwordsIcon className="size-9" />
       </span>
       <h2 className="display mt-6 text-[2rem]">Draft saved</h2>
       <p className="mt-3 max-w-[18rem] text-[0.875rem] leading-relaxed text-muted">

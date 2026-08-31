@@ -25,7 +25,7 @@ export function Marquee({
                 className="flex items-center gap-3 whitespace-nowrap px-4 text-[0.8125rem] font-black uppercase tracking-[0.1em]"
               >
                 {item}
-                <span className="text-accent">✦</span>
+                <span aria-hidden className="size-1.5 rotate-45 bg-accent" />
               </span>
             ))}
           </Fragment>

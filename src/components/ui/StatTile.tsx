@@ -35,13 +35,13 @@ export function StatTile({
   return (
     <div
       className={cn(
-        'rounded-2xl border-2 border-ink/12 bg-panel p-3.5',
+        'rounded-2xl bg-panel-2 p-3.5',
         'transition-transform duration-150 active:scale-[0.97]',
         className,
       )}
     >
-      <div className="flex items-center gap-1.5">
-        {icon && <span className="text-[0.8125rem] leading-none">{icon}</span>}
+      <div className="flex items-center gap-1.5 text-faint">
+        {icon}
         <p className="eyebrow text-faint">{label}</p>
       </div>
       <p className={cn('mt-2 text-[1.5rem] font-black leading-none tracking-[-0.03em] tabular', ACCENTS[accent])}>

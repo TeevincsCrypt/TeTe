@@ -52,5 +52,12 @@ export const APP_URL = trimmed(process.env.NEXT_PUBLIC_APP_URL);
  */
 export const EVM_DEFAULT_CHAIN_ID = trimmed(process.env.NEXT_PUBLIC_EVM_DEFAULT_CHAIN_ID) ?? '0x89';
 
+/**
+ * Optional URL for real intro footage. When unset, the intro is composited from
+ * type and colour instead — see `components/shell/IntroSequence.tsx`. Keep any
+ * file small: it loads on a phone connection inside a WebView.
+ */
+export const INTRO_VIDEO = trimmed(process.env.NEXT_PUBLIC_INTRO_VIDEO);
+
 /** Milliseconds to wait for Nimiq Pay to inject `window.nimiq`. */
 export const PROVIDER_INIT_TIMEOUT_MS = 10_000;

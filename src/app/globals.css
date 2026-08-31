@@ -84,6 +84,32 @@
     0%, 100% { opacity: 0.3; }
     50% { opacity: 0.7; }
   }
+  @keyframes introWipe {
+    from { transform: translate3d(-101%, 0, 0); }
+    to { transform: translate3d(0, 0, 0); }
+  }
+  @keyframes introLetter {
+    0% { opacity: 0; transform: translate3d(0, 40%, 0) scale(0.8); }
+    60% { opacity: 1; transform: translate3d(0, -6%, 0) scale(1.04); }
+    100% { opacity: 1; transform: none; }
+  }
+  @keyframes introRule {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+  @keyframes introFadeUp {
+    from { opacity: 0; transform: translate3d(0, 14px, 0); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes introExit {
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(0, -101%, 0); }
+  }
+  @keyframes introSpark {
+    from { opacity: 0; transform: scale(0.4) rotate(0deg); }
+    50% { opacity: 1; }
+    to { opacity: 0; transform: scale(1.6) rotate(90deg); }
+  }
   @keyframes bob {
     0%, 100% { transform: translate3d(0, 0, 0); }
     50% { transform: translate3d(0, -6px, 0); }
