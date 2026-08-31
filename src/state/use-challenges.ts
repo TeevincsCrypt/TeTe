@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { backendReady, fetchMyChallenges, fetchOpenChallenges } from '@/lib/api/client';
+import { fetchMyChallenges, fetchOpenChallenges, fetchStatus } from '@/lib/api/client';
 import type { Challenge } from '@/lib/escrow/types';
 
 const POLL_MS = 6_000;
@@ -19,6 +19,9 @@ export type Backend = 'checking' | 'ready' | 'unavailable';
 
 export function useChallenges(address: string | null) {
   const [backend, setBackend] = useState<Backend>('checking');
+  // Lists only need the store; posting and settling need the treasury as well,
+  // so the two are reported separately rather than as one "backend up".
+  const [escrow, setEscrow] = useState(false);
   const [board, setBoard] = useState<Challenge[]>([]);
   const [mine, setMine] = useState<Challenge[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -28,9 +31,10 @@ export function useChallenges(address: string | null) {
     if (inFlight.current) return;
     inFlight.current = true;
     try {
-      const ready = await backendReady();
-      setBackend(ready ? 'ready' : 'unavailable');
-      if (!ready) return;
+      const status = await fetchStatus();
+      setBackend(status.store ? 'ready' : 'unavailable');
+      setEscrow(status.escrow);
+      if (!status.store) return;
 
       const [openList, myList] = await Promise.all([
         fetchOpenChallenges(),
@@ -62,5 +66,5 @@ export function useChallenges(address: string | null) {
     };
   }, [refresh]);
 
-  return { backend, board, mine, loaded, refresh };
+  return { backend, escrow, board, mine, loaded, refresh };
 }

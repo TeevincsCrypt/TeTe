@@ -23,7 +23,13 @@ import { compactAddress } from '@/lib/nimiq/address';
 import { nimToLuna } from '@/lib/nimiq/units';
 import type { RosterPlayer } from '@/lib/roster/roster';
 import { useMiniApp } from '@/state/mini-app-provider';
-import { ApiError, backendReady, createChallenge, lookupPlayer } from '@/lib/api/client';
+import {
+  ApiError,
+  createChallenge,
+  fetchStatus,
+  lookupPlayer,
+  type BackendStatus,
+} from '@/lib/api/client';
 import type { StakeCurrency } from '@/types';
 
 /**
@@ -77,11 +83,14 @@ function CreateFlow() {
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
 
-  const [backend, setBackend] = useState<'checking' | 'ready' | 'unavailable'>('checking');
+  // `null` while the check is in flight. Posting for real needs the treasury,
+  // not just the store — asking only whether the API answers would put a "Post
+  // challenge" button in front of a deployment whose POST returns 503.
+  const [status, setStatus] = useState<BackendStatus | null>(null);
   useEffect(() => {
     let cancelled = false;
-    backendReady().then((ready) => {
-      if (!cancelled) setBackend(ready ? 'ready' : 'unavailable');
+    fetchStatus().then((next) => {
+      if (!cancelled) setStatus(next);
     });
     return () => {
       cancelled = true;
@@ -94,9 +103,11 @@ function CreateFlow() {
   const formatValid = format !== null && (format !== 'custom' || customTitle.trim().length > 0);
 
   const canContinue = [formatValid, stakeValid, opponentValid][step] ?? false;
-  // Posting for real needs a live backend and a connected wallet to sign
-  // with — either missing, and the challenge is saved as a local draft instead.
-  const canPostForReal = backend === 'ready' && Boolean(nimiq.address);
+  // Posting for real needs escrow (store AND treasury) plus a connected wallet
+  // to sign with — either missing, and the challenge is saved as a local draft
+  // instead. Checking escrow rather than merely "the API answered" is what
+  // keeps this button honest on a half-configured deployment.
+  const canPostForReal = status?.escrow === true && Boolean(nimiq.address);
 
   async function handleSave() {
     if (!format || !stakeValid) return;
@@ -243,9 +254,13 @@ function CreateFlow() {
               </PhaseNote>
             ) : (
               <PhaseNote>
-                {backend === 'unavailable'
-                  ? 'Escrow is not configured on this deployment, so this saves to your device only. Nothing is funded and no opponent is notified.'
-                  : 'Connect your wallet to post this for real. Saved for now on your device only.'}
+                {status === null
+                  ? 'Checking what this deployment can do…'
+                  : !status.escrow
+                    ? status.store
+                      ? 'The treasury is not configured on this deployment, so challenges cannot be funded or settled yet. This saves to your device only.'
+                      : 'Escrow is not configured on this deployment, so this saves to your device only. Nothing is funded and no opponent is notified.'
+                    : 'Connect your wallet to post this for real. Saved for now on your device only.'}
               </PhaseNote>
             )}
           </>

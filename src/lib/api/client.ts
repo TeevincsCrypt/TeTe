@@ -72,6 +72,20 @@ export async function lookupPlayer(username: string): Promise<DirectoryPlayer | 
   return body.player;
 }
 
+/**
+ * The name this address has claimed, if any. Lets a player see their own
+ * handle on a device that has never claimed it, since the directory — not
+ * local storage — is what opponents actually search.
+ */
+export async function myDirectoryName(address: string): Promise<DirectoryPlayer | null> {
+  const response = await fetch(`/api/players?address=${encodeURIComponent(address)}`, {
+    cache: 'no-store',
+  });
+  if (response.status === 404) return null;
+  const body = await parse<{ player: DirectoryPlayer }>(response);
+  return body.player;
+}
+
 export async function claimUsername(address: string, username: string): Promise<DirectoryPlayer> {
   const auth = await signIntent(address, 'register');
   const body = await post<{ player: DirectoryPlayer }>('/api/players', { ...auth, username });
@@ -166,12 +180,29 @@ export async function withdrawRewards(address: string) {
   return post<{ sent: number; transaction: string }>('/api/withdraw', auth);
 }
 
-/** Is the backend configured on this deployment? */
-export async function backendReady(): Promise<boolean> {
+/**
+ * What this deployment is configured to do.
+ *
+ * `store` and `escrow` are configured separately and fail separately: reading
+ * the directory and the challenge board needs only a durable store, while
+ * posting, funding and settling additionally need the treasury. The UI has to
+ * know which of the two it has, or it ends up offering "Post challenge" on a
+ * deployment whose POST will answer 503.
+ *
+ * Fails closed: an unreachable or older deployment reports neither.
+ */
+export interface BackendStatus {
+  store: boolean;
+  escrow: boolean;
+}
+
+export async function fetchStatus(): Promise<BackendStatus> {
   try {
-    const response = await fetch('/api/challenges', { cache: 'no-store' });
-    return response.status !== 503;
+    const response = await fetch('/api/status', { cache: 'no-store' });
+    if (!response.ok) return { store: false, escrow: false };
+    const body = (await response.json()) as Partial<BackendStatus>;
+    return { store: body.store === true, escrow: body.escrow === true };
   } catch {
-    return false;
+    return { store: false, escrow: false };
   }
 }
