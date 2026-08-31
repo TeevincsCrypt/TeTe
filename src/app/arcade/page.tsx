@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 
 import { CrossingGame } from '@/components/arcade/CrossingGame';
@@ -10,25 +11,29 @@ import { ChevronLeftIcon, ChevronRightIcon, CrownIcon } from '@/components/shell
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
 import { PhaseNote } from '@/components/ui/PhaseNote';
-import { GAMES, gameById, xpForScore, type GameId } from '@/lib/arcade/games';
+import { GAMES, gameById, type GameId } from '@/lib/arcade/games';
+import { formatNim } from '@/lib/nimiq/units';
+import { useEarnings } from '@/state/use-earnings';
 import { useProgress } from '@/state/use-progress';
 
 /**
  * The arcade.
  *
- * XP is an off-chain score kept on this device. It is deliberately NOT NIM —
- * TeTe has no way to send anyone funds (see `lib/arcade/progress.ts`) — and the
- * note at the foot of the screen says so rather than implying a token payout.
+ * Rewards are recorded in NIM against the player's ledger, but they are
+ * unpaid: a Mini App can ask a wallet to send funds and never send funds to a
+ * player, so paying out needs a treasury signing from a server. The note at the
+ * foot of the screen says so rather than implying money has already moved.
  */
 export default function ArcadePage() {
   const { progress, record } = useProgress();
+  const { totalLuna } = useEarnings();
   const [active, setActive] = useState<GameId | null>(null);
-  const [result, setResult] = useState<{ score: number; xp: number; record: boolean } | null>(null);
+  const [result, setResult] = useState<{ score: number; luna: number; record: boolean } | null>(null);
 
   function finish(id: GameId) {
     return (score: number) => {
-      const outcome = record(id, score, xpForScore(id, score));
-      setResult({ score, xp: outcome.gained, record: outcome.record });
+      const outcome = record(id, score);
+      setResult({ score, luna: outcome.gained, record: outcome.record });
     };
   }
 
@@ -44,7 +49,7 @@ export default function ArcadePage() {
               setResult(null);
             }}
             aria-label="Back to arcade"
-            className="-ml-2 flex size-10 items-center justify-center rounded-full text-muted transition-colors active:text-ink"
+            className="-ml-2 flex size-10 items-center justify-center rounded-full text-muted transition-colors active:text-on-accent"
           >
             <ChevronLeftIcon className="size-5" />
           </button>
@@ -81,7 +86,7 @@ export default function ArcadePage() {
   return (
     <div className="pt-1">
       {/* An editorial header rather than another bordered card. */}
-      <header className="border-b border-ink/10 pb-5">
+      <header className="border-b border-line pb-5">
         <p className="eyebrow text-faint">Arcade</p>
         <div className="mt-3 flex items-end justify-between gap-4">
           <h1 className="display text-[2.5rem] leading-[0.88]">
@@ -89,16 +94,17 @@ export default function ArcadePage() {
             <br />
             Climb.
           </h1>
-          <div className="pb-1 text-right">
-            <p className="text-[0.625rem] font-bold uppercase tracking-[0.14em] text-faint">XP</p>
+          <Link href="/wallet" className="pb-1 text-right active:opacity-60">
+            <p className="text-[0.625rem] font-bold uppercase tracking-[0.14em] text-faint">Earned</p>
             <p className="text-[1.75rem] font-black leading-none tracking-[-0.03em] tabular">
-              {progress.xp.toLocaleString()}
+              {formatNim(totalLuna)}
+              <span className="ml-1 text-[0.8125rem] text-faint">NIM</span>
             </p>
-          </div>
+          </Link>
         </div>
       </header>
 
-      <ul className="divide-y divide-ink/10">
+      <ul className="divide-y divide-line">
         {GAMES.map((game) => {
           const best = progress.best[game.id];
           return (
@@ -110,7 +116,7 @@ export default function ArcadePage() {
               >
                 <span
                   aria-hidden
-                  className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-ink text-accent"
+                  className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-contrast text-accent"
                 >
                   <GameGlyph id={game.id} className="size-6" />
                 </span>
@@ -136,9 +142,9 @@ export default function ArcadePage() {
       </ul>
 
       <PhaseNote className="mt-6">
-        XP is a local score on this device — not NIM, and not on any chain. TeTe can
-        only ask your wallet to send funds, never send funds to you, so real payouts
-        need a funded treasury that does not exist yet.
+        Rewards are recorded on this device and are not yet payable. TeTe can only
+        ask your wallet to send funds, never send funds to you, so paying these out
+        needs a funded treasury that does not exist yet.
       </PhaseNote>
     </div>
   );
@@ -152,16 +158,16 @@ function ResultBar({
   onExit,
 }: {
   game: GameId;
-  result: { score: number; xp: number; record: boolean };
+  result: { score: number; luna: number; record: boolean };
   onDismiss: () => void;
   onExit: () => void;
 }) {
   const meta = gameById(game);
   return (
-    <div className="mt-3 rounded-[1.25rem] bg-ink p-4 text-on-contrast animate-[var(--animate-rise)]">
+    <div className="mt-3 rounded-[1.25rem] bg-contrast p-4 text-on-contrast animate-[var(--animate-rise)]">
       <div className="flex items-center gap-3">
         {result.record && (
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-ink">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent">
             <CrownIcon className="size-4.5" />
           </span>
         )}
@@ -174,7 +180,9 @@ function ResultBar({
             <span className="ml-1 text-[0.8125rem] text-on-contrast/50">{meta.unit}</span>
           </p>
         </div>
-        <p className="shrink-0 text-[1rem] font-black text-accent tabular">+{result.xp} XP</p>
+        <p className="shrink-0 text-[1rem] font-black text-accent tabular">
+          +{formatNim(result.luna, { maximumFractionDigits: 3 })} NIM
+        </p>
       </div>
 
       <div className="mt-4 flex gap-2">
@@ -182,7 +190,7 @@ function ResultBar({
           type="button"
           onClick={onDismiss}
           className={cn(
-            'min-h-11 flex-1 rounded-full bg-accent text-[0.875rem] font-bold text-ink',
+            'min-h-11 flex-1 rounded-full bg-accent text-[0.875rem] font-bold text-on-accent',
             'transition-transform duration-100 active:scale-[0.97]',
           )}
         >

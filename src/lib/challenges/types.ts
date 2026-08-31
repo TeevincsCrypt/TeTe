@@ -7,34 +7,14 @@ import type { StakeCurrency } from '@/types';
  * Every one of these is decided by skill. Nothing here resolves on chance.
  */
 export const CHALLENGE_FORMATS = [
-  {
-    id: 'chess',
-    name: 'Chess',
-    tagline: 'Classic. Ruthless.',
-    icon: '♟',
-    accent: 'lime',
-  },
-  {
-    id: 'trivia',
-    name: 'Trivia',
-    tagline: 'Fastest correct wins.',
-    icon: '⚡',
-    accent: 'gold',
-  },
-  {
-    id: 'fifa',
-    name: 'Sports',
-    tagline: 'FIFA, NBA2K, F1.',
-    icon: '🎮',
-    accent: 'violet',
-  },
-  {
-    id: 'custom',
-    name: 'Custom',
-    tagline: 'Name your own contest.',
-    icon: '✦',
-    accent: 'flame',
-  },
+  { id: 'codm', name: 'CODM', tagline: 'Call of Duty Mobile.', category: 'Esports' },
+  { id: 'freefire', name: 'Free Fire', tagline: 'Squad or solo.', category: 'Esports' },
+  { id: 'efootball', name: 'eFootball', tagline: 'FIFA, eFootball, FC.', category: 'Esports' },
+  { id: 'pubg', name: 'PUBG Mobile', tagline: 'Last one standing.', category: 'Esports' },
+  { id: 'chess', name: 'Chess', tagline: 'Classic. Ruthless.', category: 'Mind' },
+  { id: 'trivia', name: 'Trivia', tagline: 'Fastest correct wins.', category: 'Mind' },
+  { id: 'arcade', name: 'Arcade', tagline: 'Beat their high score.', category: 'Arcade' },
+  { id: 'custom', name: 'Custom', tagline: 'Name your own contest.', category: 'Open' },
 ] as const;
 
 export type ChallengeFormatId = (typeof CHALLENGE_FORMATS)[number]['id'];

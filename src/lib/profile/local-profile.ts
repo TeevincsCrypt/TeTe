@@ -46,3 +46,28 @@ export function defaultHandle(address: string | null): string {
   const part = HANDLE_PARTS[hash % HANDLE_PARTS.length] ?? 'Player';
   return `${part}${(hash % 900) + 100}`;
 }
+
+const AVATAR_KEY = 'tete.avatar.v1';
+
+/** Chosen avatar variant, or null to stay with the address-derived default. */
+export function readAvatarSeed(): number | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(AVATAR_KEY);
+    const value = raw === null ? Number.NaN : Number.parseInt(raw, 10);
+    return Number.isInteger(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeAvatarSeed(seed: number | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (seed === null) window.localStorage.removeItem(AVATAR_KEY);
+    else window.localStorage.setItem(AVATAR_KEY, String(seed));
+    window.dispatchEvent(new CustomEvent('tete:profile-changed'));
+  } catch {
+    /* Storage unavailable. */
+  }
+}

@@ -59,5 +59,15 @@ export const EVM_DEFAULT_CHAIN_ID = trimmed(process.env.NEXT_PUBLIC_EVM_DEFAULT_
  */
 export const INTRO_VIDEO = trimmed(process.env.NEXT_PUBLIC_INTRO_VIDEO);
 
+/**
+ * Nimiq address that deposits are sent to.
+ *
+ * Unset by default and deliberately so: with no address configured the deposit
+ * screen refuses to send rather than guessing a destination. Funds sent to a
+ * wrong Nimiq address are not recoverable, so this is one place where a
+ * fallback would be actively dangerous.
+ */
+export const TREASURY_NIM_ADDRESS = trimmed(process.env.NEXT_PUBLIC_TREASURY_NIM_ADDRESS);
+
 /** Milliseconds to wait for Nimiq Pay to inject `window.nimiq`. */
 export const PROVIDER_INIT_TIMEOUT_MS = 10_000;

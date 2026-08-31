@@ -55,7 +55,7 @@ export function IntroSequence({ handle, onDone }: { handle: string; onDone: () =
     <div
       onPointerDown={skip}
       role="presentation"
-      className="fixed inset-0 z-50 overflow-hidden bg-ink"
+      className="fixed inset-0 z-50 overflow-hidden bg-contrast"
       style={{
         animation: leaving ? 'introExit 0.42s cubic-bezier(0.7,0,0.84,0) forwards' : undefined,
       }}
@@ -82,7 +82,7 @@ export function IntroSequence({ handle, onDone }: { handle: string; onDone: () =
             {WORD.map((letter, index) => (
               <span
                 key={`${letter}-${index}`}
-                className="text-[4.5rem] font-black leading-none tracking-[-0.045em] text-ink"
+                className="text-[4.5rem] font-black leading-none tracking-[-0.045em] text-on-accent"
                 style={{
                   animation: `introLetter 0.5s cubic-bezier(0.34,1.56,0.64,1) ${0.42 + index * 0.075}s both`,
                 }}
@@ -93,7 +93,7 @@ export function IntroSequence({ handle, onDone }: { handle: string; onDone: () =
             <svg
               aria-hidden
               viewBox="0 0 24 24"
-              className="absolute -right-8 -top-4 size-7 text-ink"
+              className="absolute -right-8 -top-4 size-7 text-on-accent"
               style={{ animation: 'introSpark 0.7s ease-out 0.85s both' }}
             >
               <path
@@ -107,12 +107,12 @@ export function IntroSequence({ handle, onDone }: { handle: string; onDone: () =
 
           <span
             aria-hidden
-            className="relative mt-5 h-[3px] w-40 origin-left bg-ink"
+            className="relative mt-5 h-[3px] w-40 origin-left bg-contrast"
             style={{ animation: 'introRule 0.45s cubic-bezier(0.85,0,0.15,1) 0.9s both' }}
           />
 
           <p
-            className="relative mt-5 text-[0.8125rem] font-bold uppercase tracking-[0.24em] text-ink/70"
+            className="relative mt-5 text-[0.8125rem] font-bold uppercase tracking-[0.24em] text-on-accent/70"
             style={{ animation: 'introFadeUp 0.5s ease-out 1.15s both' }}
           >
             Challenge · Compete · Win

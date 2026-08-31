@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { PhoneIcon } from '@/components/shell/icons';
+import { HoldButton } from '@/components/ui/HoldButton';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { APP_URL } from '@/lib/config/env';
 
@@ -39,12 +40,19 @@ export function OpenInNimiqPay() {
 
       {bare && (
         <>
-          <a
-            href={`https://nimpay.app/miniapps/open/${bare}`}
-            className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-accent px-6 text-[0.9375rem] font-bold text-on-accent transition-transform duration-100 active:scale-[0.98]"
-          >
-            Open in Nimiq Pay
-          </a>
+          <div className="mt-5 flex flex-col items-center">
+            <HoldButton
+              label="Hold to open in Nimiq Pay"
+              holdingLabel="Keep holding"
+              doneLabel="Opening"
+              onConfirm={() => {
+                window.location.href = `https://nimpay.app/miniapps/open/${bare}`;
+              }}
+            />
+            <p className="mt-3 text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-on-contrast/45">
+              Hold the ring to confirm
+            </p>
+          </div>
 
           <p className="mt-4 text-[0.625rem] font-bold uppercase tracking-[0.14em] text-on-contrast/45">
             Or paste into Mini Apps, Custom URL

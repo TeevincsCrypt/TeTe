@@ -3,6 +3,7 @@
 import { useRef } from 'react';
 
 import { GameCanvas, type Frame } from './GameCanvas';
+import { drawCar } from './sprites';
 
 interface Slice { y: number; centre: number; half: number }
 interface State {
@@ -121,13 +122,9 @@ export function DriftGame({ onFinish }: { onFinish: (score: number) => void }) {
     const carY = height - 96;
     ctx.save();
     ctx.translate(s.x, carY);
-    ctx.rotate(Math.max(-0.4, Math.min(0.4, s.vx / 420)));
-    ctx.fillStyle = s.over ? '#dc2626' : '#ff6a1a';
-    roundRect(ctx, -11, -18, 22, 36, 7);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    roundRect(ctx, -7, -12, 14, 9, 3);
-    ctx.fill();
+    // The car is drawn nose-up, so rotate a quarter turn out of its side pose.
+    ctx.rotate(-Math.PI / 2 + Math.max(-0.4, Math.min(0.4, s.vx / 420)));
+    drawCar(ctx, 0, 0, 40, true, s.over ? '#dc2626' : '#ff6a1a');
     ctx.restore();
 
     ctx.fillStyle = '#17120e';
@@ -150,15 +147,3 @@ export function DriftGame({ onFinish }: { onFinish: (score: number) => void }) {
   );
 }
 
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number, y: number, w: number, h: number, r: number,
-) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}

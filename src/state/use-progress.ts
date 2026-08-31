@@ -15,7 +15,7 @@ import {
   type Progress,
 } from '@/lib/arcade/progress';
 
-const EMPTY: Progress = { xp: 0, lastCheckIn: null, streak: 0, best: {}, plays: 0 };
+const EMPTY: Progress = { lastCheckIn: null, streak: 0, best: {}, plays: 0 };
 
 export function useProgress() {
   const [progress, setProgress] = useState<Progress>(EMPTY);
@@ -37,8 +37,8 @@ export function useProgress() {
     return result;
   }, []);
 
-  const record = useCallback((id: GameId, score: number, xp: number) => {
-    const result = recordGame(id, score, xp);
+  const record = useCallback((id: GameId, score: number) => {
+    const result = recordGame(id, score);
     setProgress(result.progress);
     return result;
   }, []);

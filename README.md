@@ -33,6 +33,13 @@ wallet, no placeholder balance and no simulated transaction anywhere in this cod
 | Local display name + avatar | ✅ | Name stored on device, avatar derived from the address |
 | Challenge by username | ✅ local only | Saved roster of opponents; no global handle registry yet |
 | Arcade — 3 playable arcade games | ✅ | Crossing, Drift, Slice. Canvas game loops, touch input |
+| Light / dark theme | ✅ | Orange-on-white, or green-on-black. Follows the OS by default |
+| Notification centre | ✅ local only | Events recorded on this device |
+| Wallet, deposit | ✅ real | A signed NIM transfer to a configured treasury |
+| Wallet, withdrawal | ❌ not possible | Needs a treasury key signing from a server |
+| Rewards ledger (NIM) | ✅ recorded, unpaid | Real amounts owed; see [Rewards](#rewards-and-why-they-are-unpaid) |
+| Shareable challenge links | ✅ | Terms encoded in the URL — works with no backend |
+| Profile customisation | ✅ | Display name, avatar style, theme |
 | Daily check-in + streak | ✅ local only | Real streak, pays XP |
 | XP progression | ✅ local only | **XP is not NIM.** See [Rewards](#rewards-and-why-xp-is-not-nim) |
 | NIM/token rewards | ❌ not possible yet | Needs a funded treasury and a backend that can sign payouts |
@@ -230,10 +237,11 @@ so it weighs nothing and stays sharp at any density. To use real footage
 instead, point `NEXT_PUBLIC_INTRO_VIDEO` at it — the timing and skip behaviour
 are unchanged.
 
-### Rewards, and why XP is not NIM
+### Rewards, and why they are unpaid
 
-The arcade pays XP, and the daily check-in pays XP. Neither pays NIM, and that
-is a structural limit rather than a shortcut.
+The arcade and the daily check-in credit **NIM** to a rewards ledger. Those
+amounts are real and recorded — and unpaid. That is a structural limit rather
+than a shortcut.
 
 **TeTe cannot send anyone NIM.** The Mini App provider signs transactions *from
 the connected player's own wallet, with their approval on a native dialog*.
@@ -242,9 +250,14 @@ needs a server holding a treasury key that signs outgoing transactions — a
 backend with hot-wallet custody, which this repository does not have and which
 cannot be faked in a client.
 
-So XP is an honest off-chain score, kept on the device, and every screen that
-shows it says so. If a funded treasury is added later the conversion reads this
-same ledger, so nothing recorded now is wasted.
+So the ledger records what is owed and every screen that shows it says it is
+not yet payable. A **deposit** works today and is genuinely on chain, because
+that direction only needs the player to sign. When a treasury exists, payouts
+settle against exactly these entries.
+
+Reward rates in `lib/wallet/earnings.ts` are placeholders. They must be tuned
+against a real pool before anything pays out: burn rate is players x sessions x
+those numbers, and a small float empties fast once a faucet is public.
 
 For testing, real liquidity is not needed at all: Nimiq Pay's hidden dev menu
 switches to testnet, where **Get free NIM** credits 110,000 testnet NIM per

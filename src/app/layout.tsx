@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Archivo } from 'next/font/google';
 
 import { AppFrame } from '@/components/shell/AppFrame';
+import { THEME_BOOTSTRAP } from '@/lib/theme';
 import { MiniAppProvider } from '@/state/mini-app-provider';
 
 import './globals.css';
@@ -39,7 +40,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={archivo.variable}>
+    <html lang="en" className={archivo.variable} suppressHydrationWarning>
+      <head>
+        {/* Sets data-theme before paint so a dark load never flashes light. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+      </head>
       <body>
         <MiniAppProvider>
           <AppFrame>{children}</AppFrame>

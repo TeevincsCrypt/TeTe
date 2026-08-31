@@ -5,7 +5,7 @@ import { cn } from './cn';
 type Tone = 'neutral' | 'inverse' | 'accent' | 'violet' | 'flame' | 'gold' | 'positive' | 'warn';
 
 const TONES: Record<Tone, string> = {
-  neutral: 'border-ink/12 bg-panel-2 text-muted',
+  neutral: 'border-line bg-panel-2 text-muted',
   /** For chips sitting on a dark panel, where the light-surface tones vanish. */
   inverse: 'border-on-contrast/25 bg-on-contrast/10 text-on-contrast/80',
   accent: 'border-accent/50 bg-accent/12 text-accent-text',

@@ -48,8 +48,3 @@ export function isBetter(_id: GameId, next: number, best: number | undefined): b
   return best === undefined || next > best;
 }
 
-/** XP earned for a run. Tuned per game so the three pay out comparably. */
-export function xpForScore(id: GameId, score: number): number {
-  const rate = id === 'drift' ? 0.35 : id === 'slice' ? 1.6 : 2.2;
-  return Math.max(1, Math.round(score * rate));
-}

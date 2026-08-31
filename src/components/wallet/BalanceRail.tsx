@@ -30,10 +30,10 @@ function NimBalance() {
   const { nimiq, locale, hasNimiqRpc, refreshNimiqBalance } = useMiniApp();
 
   return (
-    <article className={cn(CARD, 'bg-accent text-ink')}>
+    <article className={cn(CARD, 'bg-accent text-on-accent')}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="eyebrow text-ink/65">Nimiq</p>
+          <p className="eyebrow text-on-accent/65">Nimiq</p>
           <p className="display mt-0.5 text-[1rem]">NIM</p>
         </div>
         {hasNimiqRpc && nimiq.address && (
@@ -42,7 +42,7 @@ function NimBalance() {
             onClick={refreshNimiqBalance}
             aria-label="Refresh NIM balance"
             disabled={nimiq.balanceStatus === 'loading'}
-            className="-m-2 flex size-11 items-center justify-center rounded-full text-ink/50 transition-colors active:text-ink disabled:opacity-40"
+            className="-m-2 flex size-11 items-center justify-center rounded-full text-on-accent/50 transition-colors active:text-on-accent disabled:opacity-40"
           >
             <RefreshIcon className={cn('size-4', nimiq.balanceStatus === 'loading' && 'animate-spin')} />
           </button>
@@ -50,10 +50,10 @@ function NimBalance() {
       </div>
 
       <div className="mt-6">
-        {!nimiq.address && <p className="text-[0.875rem] font-bold text-ink/60">Connect to view</p>}
+        {!nimiq.address && <p className="text-[0.875rem] font-bold text-on-accent/60">Connect to view</p>}
 
         {nimiq.address && nimiq.balanceStatus === 'loading' && (
-          <Skeleton className="h-8 w-28 bg-ink/15" />
+          <Skeleton className="h-8 w-28 bg-contrast/15" />
         )}
 
         {nimiq.address && nimiq.balanceStatus === 'ready' && nimiq.balanceLuna !== null && (
@@ -61,13 +61,13 @@ function NimBalance() {
         )}
 
         {nimiq.address && nimiq.balanceStatus === 'unsupported' && (
-          <p className="text-[0.8125rem] font-semibold leading-snug text-ink/65">
+          <p className="text-[0.8125rem] font-semibold leading-snug text-on-accent/65">
             No balance API — add an RPC endpoint to read it.
           </p>
         )}
 
         {nimiq.address && nimiq.balanceStatus === 'error' && (
-          <p className="text-[0.8125rem] font-semibold leading-snug text-ink/65">
+          <p className="text-[0.8125rem] font-semibold leading-snug text-on-accent/65">
             Couldn’t reach the node.
           </p>
         )}

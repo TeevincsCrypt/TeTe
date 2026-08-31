@@ -7,6 +7,8 @@ import { PhaseNote } from '@/components/ui/PhaseNote';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { FlameIcon, HandshakeIcon, ScalesIcon, TrophyIcon } from '@/components/shell/icons';
 import { Sunburst } from '@/components/ui/Sunburst';
+import { formatNim } from '@/lib/nimiq/units';
+import { useEarnings } from '@/state/use-earnings';
 import { useProgress } from '@/state/use-progress';
 
 /**
@@ -26,10 +28,11 @@ const RULES = [
 
 export default function LeaderboardPage() {
   const { progress } = useProgress();
+  const { totalLuna } = useEarnings();
 
   return (
     <div className="space-y-5 pt-2">
-      <header className="relative overflow-hidden rounded-3xl bg-ink px-6 pb-7 pt-6 text-on-contrast">
+      <header className="relative overflow-hidden rounded-3xl bg-contrast px-6 pb-7 pt-6 text-on-contrast">
         <Sunburst className="-right-20 -top-20 size-56 text-gold/[0.14]" />
         <div className="relative">
           <Chip tone="gold" dot>
@@ -53,8 +56,8 @@ export default function LeaderboardPage() {
         <Sticker tone="panel">
           <div className="flex items-end justify-between gap-3">
             <div>
-              <p className="eyebrow text-faint">Arcade XP</p>
-              <p className="display mt-1 text-[2rem] tabular">{progress.xp.toLocaleString()}</p>
+              <p className="eyebrow text-faint">Earned</p>
+              <p className="display mt-1 text-[2rem] tabular">{formatNim(totalLuna)}</p>
             </div>
             <div className="text-right">
               <p className="eyebrow text-faint">Streak</p>
@@ -70,7 +73,7 @@ export default function LeaderboardPage() {
 
       <section>
         <Eyebrow className="mb-3 text-faint">How rank is earned</Eyebrow>
-        <div className="divide-y divide-ink/10 border-y border-ink/10">
+        <div className="divide-y divide-line border-y border-line">
           {RULES.map((rule) => (
             <div key={rule.title} className="flex items-center gap-3.5 py-3.5">
               <span
@@ -89,9 +92,9 @@ export default function LeaderboardPage() {
       </section>
 
       <PhaseNote>
-        Global ranking is not live. Your XP above is real but local — comparing
-        players needs a backend to hold the table, and match scores need escrow
-        so results can be settled. Neither exists yet.
+        Global ranking is not live. Your earnings above are recorded but local —
+        comparing players needs a backend to hold the table, and match scores need
+        escrow so results can be settled. Neither exists yet.
       </PhaseNote>
 
       <ButtonLink href="/create" size="lg">
@@ -116,7 +119,7 @@ function Podium() {
           <div key={place} className="flex flex-1 flex-col items-center">
             <span
               aria-hidden
-              className="mb-2 flex size-10 items-center justify-center rounded-full border border-dashed border-ink/25 text-[0.875rem] text-faint"
+              className="mb-2 flex size-10 items-center justify-center rounded-full border border-dashed border-line text-[0.875rem] text-faint"
             >
               ?
             </span>
