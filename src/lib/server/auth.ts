@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { Address, PublicKey, Signature } from '@nimiq/core';
+import { Address, Hash, PublicKey, Signature } from '@nimiq/core';
 
 /**
  * Proof that a request really comes from the owner of a Nimiq address.
@@ -24,6 +24,30 @@ import { signingMessage } from '@/lib/api/message';
 const MAX_AGE_MS = 5 * 60 * 1000;
 
 export { signingMessage };
+
+/**
+ * Nimiq does not sign the raw bytes of a message.
+ *
+ * A wallet that signed arbitrary bytes could be tricked into signing something
+ * that is also a valid transaction, so Nimiq prefixes the message and hashes
+ * the result before signing: SHA-256 over
+ *
+ *     "\x16Nimiq Signed Message:\n" + <message byte length> + <message bytes>
+ *
+ * Ed25519 then signs that 32-byte digest. Verification has to reproduce the
+ * same construction — checking the raw message instead simply fails, which is
+ * what "Signature is invalid" was.
+ */
+const MSG_PREFIX = '\x16Nimiq Signed Message:\n';
+
+function nimiqSignedMessageHash(message: string): Uint8Array {
+  const body = new TextEncoder().encode(message);
+  const head = new TextEncoder().encode(`${MSG_PREFIX}${body.length}`);
+  const data = new Uint8Array(head.length + body.length);
+  data.set(head, 0);
+  data.set(body, head.length);
+  return Hash.computeSha256(data);
+}
 
 export interface SignedRequest {
   address: string;
@@ -53,9 +77,18 @@ export function verifySignedRequest(input: Partial<SignedRequest>, expectedInten
   try {
     const key = PublicKey.fromHex(publicKey);
     const sig = Signature.fromHex(signature);
-    const message = new TextEncoder().encode(signingMessage(intent, issuedAt));
+    const text = signingMessage(intent, issuedAt);
 
-    if (!key.verify(sig, message)) return { ok: false, error: 'Signature is not valid.' };
+    // The prefixed hash is what Nimiq Pay produces. The raw form is also
+    // accepted because the Mini App provider's `sign()` does not document
+    // which of the two it uses, and both commit to exactly the same string —
+    // the one carrying this request's intent and timestamp — so accepting
+    // either costs nothing: a forger still needs the address's private key.
+    const valid =
+      key.verify(sig, nimiqSignedMessageHash(text)) ||
+      key.verify(sig, new TextEncoder().encode(text));
+
+    if (!valid) return { ok: false, error: 'Signature is not valid.' };
 
     // The address must be the one this key actually controls.
     const derived = key.toAddress().toUserFriendlyAddress();
