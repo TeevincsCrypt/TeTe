@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   applicationName: 'TeTe',
   other: {
     'apple-mobile-web-app-capable': 'yes',
-    'apple-mobile-web-app-status-bar-style': 'black-translucent',
+    'apple-mobile-web-app-status-bar-style': 'default',
   },
 };
 
@@ -34,7 +34,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#0a0b0f',
+  themeColor: '#fbf8f5',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

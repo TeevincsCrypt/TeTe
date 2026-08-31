@@ -123,7 +123,12 @@ export async function unwrap<T>(call: () => Promise<T | { error: unknown }>): Pr
  */
 export async function requestAccounts(): Promise<string[]> {
   const provider = await getProvider();
-  return unwrap<string[]>(() => provider.listAccounts());
+  const accounts = await unwrap<unknown>(() => provider.listAccounts());
+  // The host app is external code: guard the shape rather than indexing blindly.
+  if (!Array.isArray(accounts)) {
+    throw new NimiqProviderError('failed', 'Nimiq Pay returned an unexpected account list.');
+  }
+  return accounts.filter((entry): entry is string => typeof entry === 'string');
 }
 
 /**

@@ -6,6 +6,7 @@ import { cn } from '@/components/ui/cn';
 import { PhaseNote } from '@/components/ui/PhaseNote';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { Sunburst } from '@/components/ui/Sunburst';
+import { useProgress } from '@/state/use-progress';
 
 /**
  * Rankings.
@@ -23,6 +24,8 @@ const RULES = [
 ] as const;
 
 export default function LeaderboardPage() {
+  const { progress } = useProgress();
+
   return (
     <div className="space-y-5 pt-2">
       <header className="relative overflow-hidden rounded-[var(--radius-sticker)] border-2 border-ink bg-panel px-5 pb-6 pt-6">
@@ -45,6 +48,26 @@ export default function LeaderboardPage() {
       <Podium />
 
       <section>
+        <Eyebrow className="mb-3 text-faint">Your standing</Eyebrow>
+        <Sticker tone="panel">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="eyebrow text-faint">Arcade XP</p>
+              <p className="display mt-1 text-[2rem] tabular">{progress.xp.toLocaleString()}</p>
+            </div>
+            <div className="text-right">
+              <p className="eyebrow text-faint">Streak</p>
+              <p className="display mt-1 text-[2rem] text-flame tabular">{progress.streak}</p>
+            </div>
+          </div>
+          <p className="mt-4 border-t-2 border-line pt-3.5 text-[0.75rem] leading-relaxed text-muted">
+            Earned in the <span className="font-bold text-accent-text">Arcade</span> and from daily
+            check-ins. Real, and counted only on this device.
+          </p>
+        </Sticker>
+      </section>
+
+      <section>
         <Eyebrow className="mb-3 text-faint">How rank is earned</Eyebrow>
         <div className="space-y-2.5">
           {RULES.map((rule) => (
@@ -65,8 +88,9 @@ export default function LeaderboardPage() {
       </section>
 
       <PhaseNote>
-        Ranking is not live. Scores start being recorded once challenges can be
-        funded and settled, so no standings exist to show.
+        Global ranking is not live. Your XP above is real but local — comparing
+        players needs a backend to hold the table, and match scores need escrow
+        so results can be settled. Neither exists yet.
       </PhaseNote>
 
       <ButtonLink href="/create" size="lg">

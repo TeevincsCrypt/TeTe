@@ -32,6 +32,10 @@ wallet, no placeholder balance and no simulated transaction anywhere in this cod
 | Challenge builder | ✅ local only | Real 3-step form, saves an unfunded local draft |
 | Local display name + avatar | ✅ | Name stored on device, avatar derived from the address |
 | Challenge by username | ✅ local only | Saved roster of opponents; no global handle registry yet |
+| Arcade — 3 playable skill games | ✅ | Reflex, Recall, Sprint. Real play, real scoring |
+| Daily check-in + streak | ✅ local only | Real streak, pays XP |
+| XP progression | ✅ local only | **XP is not NIM.** See [Rewards](#rewards-and-why-xp-is-not-nim) |
+| NIM/token rewards | ❌ not possible yet | Needs a funded treasury and a backend that can sign payouts |
 | Escrow, invites, settlement, ranking | ❌ not built | Phase 2+ |
 
 No transaction is ever sent in Phase 1. The app only reads state and requests
@@ -197,6 +201,26 @@ rejects a duplicate username and refuses to save one address under two names, so
 a single opponent cannot appear twice. When a backend arrives this becomes the
 local cache in front of a real registry and the address step goes away — the
 record shape does not change.
+
+### Rewards, and why XP is not NIM
+
+The arcade pays XP, and the daily check-in pays XP. Neither pays NIM, and that
+is a structural limit rather than a shortcut.
+
+**TeTe cannot send anyone NIM.** The Mini App provider signs transactions *from
+the connected player's own wallet, with their approval on a native dialog*.
+There is no mechanism for the app to send funds *to* a player. Paying rewards
+needs a server holding a treasury key that signs outgoing transactions — a
+backend with hot-wallet custody, which this repository does not have and which
+cannot be faked in a client.
+
+So XP is an honest off-chain score, kept on the device, and every screen that
+shows it says so. If a funded treasury is added later the conversion reads this
+same ledger, so nothing recorded now is wasted.
+
+For testing, real liquidity is not needed at all: Nimiq Pay's hidden dev menu
+switches to testnet, where **Get free NIM** credits 110,000 testnet NIM per
+request.
 
 ### Honest empty states
 

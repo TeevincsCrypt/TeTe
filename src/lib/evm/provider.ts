@@ -82,26 +82,43 @@ export async function evmRequest<T>(method: string, params?: unknown[] | object)
 }
 
 /**
+ * Coerce an account response into a list of strings.
+ *
+ * EIP-1193 says these methods return an array, but a provider is external code
+ * we do not control — a malformed or `null` response must not be allowed
+ * through, because callers index into the result and `null[0]` would take down
+ * every screen in the app. Anything unexpected becomes an empty list.
+ */
+function toAddressList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string');
+}
+
+/**
  * Prompt for the user's EVM accounts. Shows a native dialog, so it must be
  * behind a deliberate user action. The returned address is the same on every
  * supported chain.
  */
-export function requestEvmAccounts(): Promise<string[]> {
-  return evmRequest<string[]>('eth_requestAccounts');
+export async function requestEvmAccounts(): Promise<string[]> {
+  return toAddressList(await evmRequest<unknown>('eth_requestAccounts'));
 }
 
 /** Already-authorised accounts. Does not prompt; returns [] when not connected. */
 export async function readEvmAccounts(): Promise<string[]> {
   try {
-    return await evmRequest<string[]>('eth_accounts');
+    return toAddressList(await evmRequest<unknown>('eth_accounts'));
   } catch {
     return [];
   }
 }
 
 /** Current chain as a hex string. Read-only, no prompt. */
-export function readChainId(): Promise<string> {
-  return evmRequest<string>('eth_chainId');
+export async function readChainId(): Promise<string> {
+  const chainId = await evmRequest<unknown>('eth_chainId');
+  if (typeof chainId !== 'string') {
+    throw new EvmProviderError('failed', 'The wallet returned an unexpected chain id.');
+  }
+  return chainId;
 }
 
 /**
