@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { fundingMemo } from '@/lib/escrow/types';
+
 import {
   MAX_PAYOUT_LUNA,
   TREASURY_ADDRESS,
@@ -36,11 +38,6 @@ function assertReady(): void {
     // replayed after a cold start. Refusing is the only safe answer.
     throw new TreasuryError('Refusing to move funds without a durable store.');
   }
-}
-
-/** The reference a funding transaction must carry to be counted. */
-export function fundingMemo(challengeId: string): string {
-  return `tete:${challengeId}`;
 }
 
 function memoOf(tx: RpcTransaction): string {

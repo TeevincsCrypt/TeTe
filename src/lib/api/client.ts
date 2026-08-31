@@ -10,7 +10,8 @@
  * deliberate, user-initiated action — never something that fires on a render.
  */
 import { signingMessage } from '@/lib/api/message';
-import { signMessage } from '@/lib/nimiq/provider';
+import { fundingMemo, type Challenge } from '@/lib/escrow/types';
+import { sendNim, signMessage } from '@/lib/nimiq/provider';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -42,6 +43,11 @@ export async function signIntent(address: string, intent: string) {
   const issuedAt = Date.now();
   const signed = await signMessage(signingMessage(intent, issuedAt));
   return { address, publicKey: signed.publicKey, signature: signed.signature, intent, issuedAt };
+}
+
+async function get<T>(path: string): Promise<T> {
+  const response = await fetch(path, { cache: 'no-store' });
+  return parse<T>(response);
 }
 
 async function post<T>(path: string, payload: Record<string, unknown>): Promise<T> {
@@ -84,9 +90,29 @@ export async function createChallenge(
     /** Username, when aiming it at somebody. Omit for an open challenge. */
     opponent?: string;
   },
-) {
+): Promise<Challenge> {
   const auth = await signIntent(address, 'create-challenge');
-  return post<{ challenge: unknown }>('/api/challenges', { ...auth, ...input });
+  const body = await post<{ challenge: Challenge }>('/api/challenges', { ...auth, ...input });
+  return body.challenge;
+}
+
+/** The open board — challenges anyone can accept. */
+export async function fetchOpenChallenges(): Promise<Challenge[]> {
+  const body = await get<{ challenges: Challenge[] }>('/api/challenges');
+  return body.challenges;
+}
+
+/** Every challenge this address is host or guest on. */
+export async function fetchMyChallenges(address: string): Promise<Challenge[]> {
+  const body = await get<{ challenges: Challenge[] }>(`/api/challenges?address=${encodeURIComponent(address)}`);
+  return body.challenges;
+}
+
+export async function fetchChallenge(id: string): Promise<Challenge | null> {
+  const response = await fetch(`/api/challenges/${id}`, { cache: 'no-store' });
+  if (response.status === 404) return null;
+  const body = await parse<{ challenge: Challenge }>(response);
+  return body.challenge;
 }
 
 export async function challengeAction(
@@ -94,9 +120,45 @@ export async function challengeAction(
   id: string,
   action: 'accept' | 'confirm-funding' | 'report',
   extra: Record<string, unknown> = {},
-) {
+): Promise<Challenge> {
   const auth = await signIntent(address, `${action}:${id}`);
-  return post<{ challenge: unknown }>(`/api/challenges/${id}`, { ...auth, action, ...extra });
+  const body = await post<{ challenge: Challenge }>(`/api/challenges/${id}`, { ...auth, action, ...extra });
+  return body.challenge;
+}
+
+/**
+ * Fund a NIM challenge in one step: send the stake to the escrow address with
+ * the challenge's memo attached, wait for it to land, then ask the server to
+ * verify and record it.
+ *
+ * Only NIM is wired end to end. A USDT stake would need the server to watch
+ * Polygon (or whichever chain) for an incoming ERC-20 transfer, which is not
+ * built — see the note on the funding screen for USDT challenges.
+ */
+export async function fundNimChallenge(address: string, challenge: Challenge): Promise<Challenge> {
+  if (challenge.currency !== 'NIM') {
+    throw new ApiError('Only NIM challenges can be funded automatically right now.', 400);
+  }
+  if (!challenge.escrowAddress) {
+    throw new ApiError('This challenge has no escrow address yet.', 409);
+  }
+
+  await sendNim(challenge.escrowAddress, challenge.stake, fundingMemo(challenge.id));
+
+  // The transaction needs a few confirmations before the server will count it
+  // (see MIN_CONFIRMATIONS in lib/server/treasury.ts) — poll rather than
+  // asking once and reporting failure on a transaction that only just sent.
+  const attempts = 10;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await challengeAction(address, challenge.id, 'confirm-funding');
+    } catch (cause: unknown) {
+      const last = attempt === attempts - 1;
+      if (last || !(cause instanceof ApiError) || cause.status !== 409) throw cause;
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+    }
+  }
+  throw new ApiError('Funding could not be confirmed. Try again in a moment.', 409);
 }
 
 export async function withdrawRewards(address: string) {
@@ -107,7 +169,7 @@ export async function withdrawRewards(address: string) {
 /** Is the backend configured on this deployment? */
 export async function backendReady(): Promise<boolean> {
   try {
-    const response = await fetch('/api/challenges');
+    const response = await fetch('/api/challenges', { cache: 'no-store' });
     return response.status !== 503;
   } catch {
     return false;

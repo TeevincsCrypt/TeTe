@@ -72,5 +72,12 @@ export const INTRO_VIDEO = trimmed(process.env.NEXT_PUBLIC_INTRO_VIDEO) ?? '/bra
  */
 export const TREASURY_NIM_ADDRESS = trimmed(process.env.NEXT_PUBLIC_TREASURY_NIM_ADDRESS);
 
+/**
+ * Optional block explorer URL template for a transaction, with `{hash}` as the
+ * placeholder. Left unset by default rather than guessing a domain — TeTe still
+ * shows the hash itself (with copy) either way.
+ */
+export const EXPLORER_TX_URL = trimmed(process.env.NEXT_PUBLIC_EXPLORER_TX_URL);
+
 /** Milliseconds to wait for Nimiq Pay to inject `window.nimiq`. */
 export const PROVIDER_INIT_TIMEOUT_MS = 10_000;

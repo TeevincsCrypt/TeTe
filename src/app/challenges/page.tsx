@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
+import { ChallengeRow } from '@/components/challenges/ChallengeRow';
 import { BoltIcon, FlagIcon, NoteIcon, SwordsIcon, TrashIcon } from '@/components/shell/icons';
 import { ButtonLink } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
@@ -10,22 +11,42 @@ import { PhaseNote } from '@/components/ui/PhaseNote';
 import { SlidingTabs } from '@/components/ui/SlidingTabs';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { draftTitle, type ChallengeDraft } from '@/lib/challenges/types';
-import { shortenAddress } from '@/lib/nimiq/address';
+import { LIVE_STATES, TERMINAL_STATES } from '@/lib/escrow/types';
+import { compactAddress, shortenAddress } from '@/lib/nimiq/address';
+import { useMiniApp } from '@/state/mini-app-provider';
+import { useChallenges } from '@/state/use-challenges';
 import { useDrafts } from '@/state/use-drafts';
 
-type Tab = 'drafts' | 'active' | 'done';
+type Tab = 'board' | 'mine' | 'drafts';
 
 /**
  * The player's challenges.
  *
- * Drafts are real objects the player built and are stored on this device.
- * Active and Done are genuinely empty and will stay that way until escrow and
- * settlement exist — so rather than invent rows, those tabs explain what will
- * fill them.
+ * When the backend is configured, Board and Mine show real challenges pulled
+ * from the API and stay current on a short poll — there is no push channel.
+ * Drafts are always available: local objects the player built, which exist
+ * whether or not escrow is configured on this deployment. Once escrow is up,
+ * new challenges are posted for real from Create, so drafts mostly matter as
+ * a fallback for a deployment that has not set the server variables yet.
  */
 export default function ChallengesPage() {
-  const { drafts, loaded, remove } = useDrafts();
+  const { nimiq } = useMiniApp();
+  const { drafts, loaded: draftsLoaded, remove } = useDrafts();
+  const { backend, board, mine, loaded: liveLoaded } = useChallenges(nimiq.address);
+
   const [tab, setTab] = useState<Tab>('drafts');
+  const defaultedTab = useRef(false);
+  useEffect(() => {
+    // Default to a live tab once we know escrow is actually configured, but
+    // only the first time — never yank the tab out from under the player.
+    if (!defaultedTab.current && backend === 'ready') {
+      setTab('mine');
+      defaultedTab.current = true;
+    }
+  }, [backend]);
+
+  const activeMine = mine.filter((c) => LIVE_STATES.includes(c.state) && c.state !== 'open');
+  const doneMine = mine.filter((c) => TERMINAL_STATES.includes(c.state));
 
   return (
     <div className="space-y-5 pt-2">
@@ -38,66 +59,205 @@ export default function ChallengesPage() {
         value={tab}
         onChange={setTab}
         options={[
+          { id: 'board', label: 'Board', count: board.length },
+          { id: 'mine', label: 'Mine', count: activeMine.length },
           { id: 'drafts', label: 'Drafts', count: drafts.length },
-          { id: 'active', label: 'Active' },
-          { id: 'done', label: 'Done' },
         ]}
       />
 
+      {tab === 'board' && (
+        <BoardTab backend={backend} loaded={liveLoaded} board={board} connected={Boolean(nimiq.address)} />
+      )}
+
+      {tab === 'mine' && (
+        <MineTab
+          backend={backend}
+          loaded={liveLoaded}
+          active={activeMine}
+          done={doneMine}
+          myAddress={nimiq.address}
+        />
+      )}
+
       {tab === 'drafts' && (
         <div className="space-y-3">
-          {!loaded && <div className="h-28 rounded-[var(--radius-sticker)] border-2 border-line bg-panel animate-[var(--animate-shimmer)]" />}
+          {!draftsLoaded && (
+            <div className="h-28 rounded-[var(--radius-sticker)] border-2 border-line bg-panel animate-[var(--animate-shimmer)]" />
+          )}
 
-          {loaded && drafts.length === 0 && (
+          {draftsLoaded && drafts.length === 0 && (
             <Sticker tone="panel" className="px-0 py-0">
               <EmptyState
                 glyph={<NoteIcon className="size-7" />}
                 title="No drafts yet"
-                body="Build a challenge and it lands here, ready to fund when escrow ships."
+                body={
+                  backend === 'ready'
+                    ? 'Drafts are for challenges saved before you post them. Create one to get started.'
+                    : 'Build a challenge and it lands here until escrow is configured on this deployment.'
+                }
                 action={<ButtonLink href="/create">Create challenge</ButtonLink>}
               />
             </Sticker>
           )}
 
-          {loaded && drafts.length > 0 && (
+          {draftsLoaded && drafts.length > 0 && (
             <>
               {drafts.map((draft) => (
                 <DraftRow key={draft.id} draft={draft} onDelete={() => remove(draft.id)} />
               ))}
               <PhaseNote>
-                Drafts live only on this device. Nothing is funded and no opponent has
-                been notified — that needs escrow, which is the next thing being built.
+                Drafts live only on this device. Nothing is funded and no opponent has been
+                notified — post a real challenge from Create once you are ready.
               </PhaseNote>
             </>
           )}
         </div>
       )}
+    </div>
+  );
+}
 
-      {tab === 'active' && (
-        <Sticker tone="panel" className="px-0 py-0">
-          <EmptyState
-            glyph={<BoltIcon className="size-7" />}
-            title="Nothing live"
-            body="Once both players fund a challenge, the match appears here with its stake locked in escrow."
-          />
-        </Sticker>
-      )}
+function BoardTab({
+  backend,
+  loaded,
+  board,
+  connected,
+}: {
+  backend: 'checking' | 'ready' | 'unavailable';
+  loaded: boolean;
+  board: import('@/lib/escrow/types').Challenge[];
+  connected: boolean;
+}) {
+  if (backend === 'unavailable') return <EscrowUnavailable />;
+  if (!loaded) return <ListSkeleton />;
 
-      {tab === 'done' && (
-        <Sticker tone="panel" className="px-0 py-0">
-          <EmptyState
-            glyph={<FlagIcon className="size-7" />}
-            title="No results yet"
-            body="Finished matches, confirmed results and payouts will be listed here."
-          />
-        </Sticker>
+  if (board.length === 0) {
+    return (
+      <Sticker tone="panel" className="px-0 py-0">
+        <EmptyState
+          glyph={<BoltIcon className="size-7" />}
+          title="Nothing open right now"
+          body="Open challenges anyone can accept will show up here."
+          action={<ButtonLink href="/create">Post one</ButtonLink>}
+        />
+      </Sticker>
+    );
+  }
+
+  return (
+    <div>
+      <ul className="divide-y divide-line">
+        {board.map((challenge) => (
+          <li key={challenge.id}>
+            <ChallengeRow challenge={challenge} />
+          </li>
+        ))}
+      </ul>
+      {!connected && (
+        <PhaseNote className="mt-3">Connect your wallet to accept one of these.</PhaseNote>
       )}
     </div>
   );
 }
 
-function DraftRow({ draft, onDelete }: { draft: ChallengeDraft; onDelete: () => void }) {
+function MineTab({
+  backend,
+  loaded,
+  active,
+  done,
+  myAddress,
+}: {
+  backend: 'checking' | 'ready' | 'unavailable';
+  loaded: boolean;
+  active: import('@/lib/escrow/types').Challenge[];
+  done: import('@/lib/escrow/types').Challenge[];
+  myAddress: string | null;
+}) {
+  if (backend === 'unavailable') return <EscrowUnavailable />;
+  if (!myAddress) {
+    return (
+      <Sticker tone="panel" className="px-0 py-0">
+        <EmptyState
+          glyph={<FlagIcon className="size-7" />}
+          title="Connect to see your matches"
+          body="Challenges you have joined or posted will show up here."
+        />
+      </Sticker>
+    );
+  }
+  if (!loaded) return <ListSkeleton />;
 
+  if (active.length === 0 && done.length === 0) {
+    return (
+      <Sticker tone="panel" className="px-0 py-0">
+        <EmptyState
+          glyph={<FlagIcon className="size-7" />}
+          title="No matches yet"
+          body="Post a challenge or accept one from the board to get started."
+          action={<ButtonLink href="/create">Create challenge</ButtonLink>}
+        />
+      </Sticker>
+    );
+  }
+
+  const mySide = (challenge: import('@/lib/escrow/types').Challenge) =>
+    compactAddress(challenge.host.address) === compactAddress(myAddress)
+      ? ('host' as const)
+      : ('guest' as const);
+
+  return (
+    <div className="space-y-5">
+      {active.length > 0 && (
+        <div>
+          <Eyebrow className="mb-1 text-faint">Active</Eyebrow>
+          <ul className="divide-y divide-line">
+            {active.map((challenge) => (
+              <li key={challenge.id}>
+                <ChallengeRow challenge={challenge} mySide={mySide(challenge)} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {done.length > 0 && (
+        <div>
+          <Eyebrow className="mb-1 text-faint">Done</Eyebrow>
+          <ul className="divide-y divide-line">
+            {done.map((challenge) => (
+              <li key={challenge.id}>
+                <ChallengeRow challenge={challenge} mySide={mySide(challenge)} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EscrowUnavailable() {
+  return (
+    <Sticker tone="panel">
+      <p className="text-[0.875rem] font-bold">Escrow is not configured</p>
+      <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
+        This deployment has no treasury or database set up yet, so challenges cannot be
+        posted, funded or settled for real. Use Drafts in the meantime.
+      </p>
+    </Sticker>
+  );
+}
+
+function ListSkeleton() {
+  return (
+    <div className="space-y-2">
+      {[0, 1].map((i) => (
+        <div key={i} className="h-16 rounded-xl bg-panel-2 animate-[var(--animate-shimmer)]" />
+      ))}
+    </div>
+  );
+}
+
+function DraftRow({ draft, onDelete }: { draft: ChallengeDraft; onDelete: () => void }) {
   return (
     <article className="rounded-[var(--radius-sticker)] border-2 border-line bg-panel p-4 animate-[var(--animate-rise)]">
       <div className="flex items-start gap-3.5">
