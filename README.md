@@ -225,17 +225,20 @@ state lives in a ref and is mutated inside the frame callback, so a running game
 never triggers a React render — sixty renders a second is the quickest way to
 make a WebView feel cheap.
 
-### The login intro
+### Brand assets and the login intro
 
-Connecting plays a short intro once per session, skippable on tap and collapsed
-to a brief fade under `prefers-reduced-motion`.
+The logo ships as an app-icon tile (`public/brand/`), resized from the 1254px
+source at build time so a phone never fetches the original. It is used as-is
+rather than knocked out onto a transparent background — that left a halo and
+erased the die pips — and it reads correctly on both the light and dark grounds.
+It also supplies the favicon and the Apple touch icon.
 
-It is a scripted motion sequence rather than a bundled film: there is no source
-footage in this repository, and shipping video would mean pushing megabytes into
-a WebView on a phone connection. Every frame is composited from type and colour,
-so it weighs nothing and stays sharp at any density. To use real footage
-instead, point `NEXT_PUBLIC_INTRO_VIDEO` at it — the timing and skip behaviour
-are unchanged.
+Connecting plays `public/brand/intro.mp4` (H.264/AAC, ~508 KB, 2.6s), skippable
+on tap. Three things can go wrong with autoplay in a WebView — the file fails to
+load, the codec is unsupported, or playback is refused — and each drops to a
+composited animation rather than a black screen. A clip that has not begun
+within 1.8s is abandoned for the same reason. Point `NEXT_PUBLIC_INTRO_VIDEO`
+elsewhere to swap the film, or set it empty to always animate.
 
 ### Rewards, and why they are unpaid
 

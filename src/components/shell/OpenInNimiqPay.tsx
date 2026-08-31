@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 
+import Image from 'next/image';
+
 import { PhoneIcon } from '@/components/shell/icons';
 import { HoldButton } from '@/components/ui/HoldButton';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
@@ -27,9 +29,12 @@ export function OpenInNimiqPay() {
 
   return (
     <Sticker tone="contrast" className="overflow-hidden rounded-3xl p-6">
-      <div className="flex items-center gap-2">
-        <PhoneIcon className="size-4 text-on-contrast/60" />
-        <Eyebrow className="text-on-contrast/60">Wallet features</Eyebrow>
+      <div className="flex items-center gap-3">
+        <Image src="/brand/logo-128.png" alt="" width={38} height={38} className="rounded-[28%]" />
+        <div className="flex items-center gap-1.5">
+          <PhoneIcon className="size-3.5 text-on-contrast/60" />
+          <Eyebrow className="text-on-contrast/60">Wallet features</Eyebrow>
+        </div>
       </div>
 
       <h2 className="display mt-2 text-[1.5rem] text-on-contrast">Open TeTe in Nimiq Pay</h2>

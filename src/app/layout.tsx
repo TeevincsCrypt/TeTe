@@ -25,6 +25,10 @@ export const metadata: Metadata = {
   description:
     'Peer-to-peer skill challenges. Stake NIM or USDT, beat your opponent, take the pot. A Nimiq Pay Mini App.',
   applicationName: 'TeTe',
+  icons: {
+    icon: '/brand/icon-192.png',
+    apple: '/brand/apple-touch-icon.png',
+  },
   other: {
     'apple-mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-status-bar-style': 'default',

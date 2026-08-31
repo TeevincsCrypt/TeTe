@@ -53,11 +53,14 @@ export const APP_URL = trimmed(process.env.NEXT_PUBLIC_APP_URL);
 export const EVM_DEFAULT_CHAIN_ID = trimmed(process.env.NEXT_PUBLIC_EVM_DEFAULT_CHAIN_ID) ?? '0x89';
 
 /**
- * Optional URL for real intro footage. When unset, the intro is composited from
- * type and colour instead — see `components/shell/IntroSequence.tsx`. Keep any
- * file small: it loads on a phone connection inside a WebView.
+ * Intro footage played after connecting. Defaults to the bundled clip; point it
+ * elsewhere to swap the film without touching code, or set it to an empty
+ * string to fall back to the composited animation.
+ *
+ * Keep any replacement small — it loads on a phone connection inside a WebView.
+ * The bundled clip is ~508 KB and 2.6s.
  */
-export const INTRO_VIDEO = trimmed(process.env.NEXT_PUBLIC_INTRO_VIDEO);
+export const INTRO_VIDEO = trimmed(process.env.NEXT_PUBLIC_INTRO_VIDEO) ?? '/brand/intro.mp4';
 
 /**
  * Nimiq address that deposits are sent to.
