@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 
 import { cn } from '@/components/ui/cn';
 
-import { HomeIcon, PlusIcon, SwordsIcon, TrophyIcon, UserIcon } from './icons';
+import { ArcadeIcon, HomeIcon, PlusIcon, SwordsIcon, UserIcon } from './icons';
 
 /**
  * Bottom navigation. Every tab is a real route — nothing here is disabled.
@@ -18,7 +18,7 @@ const TABS = [
   { href: '/', label: 'Home', Icon: HomeIcon },
   { href: '/challenges', label: 'Battles', Icon: SwordsIcon },
   { href: '/create', label: 'Create', Icon: PlusIcon, primary: true },
-  { href: '/leaderboard', label: 'Ranks', Icon: TrophyIcon },
+  { href: '/arcade', label: 'Arcade', Icon: ArcadeIcon },
   { href: '/profile', label: 'You', Icon: UserIcon },
 ] as const;
 

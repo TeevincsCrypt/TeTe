@@ -51,6 +51,17 @@ export function TrophyIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function ArcadeIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="2.5" y="7" width="19" height="11" rx="4" />
+      <path d="M7 11v3M5.5 12.5h3" />
+      <circle cx="16" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="18.5" cy="14.5" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function UserIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...base} {...props}>

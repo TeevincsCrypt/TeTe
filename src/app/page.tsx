@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 
+import { DailyCheckIn } from '@/components/arcade/DailyCheckIn';
+import { OpenInNimiqPay } from '@/components/shell/OpenInNimiqPay';
 import { ButtonLink } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -16,14 +18,16 @@ import { CHALLENGE_FORMATS } from '@/lib/challenges/types';
 import { defaultHandle } from '@/lib/profile/local-profile';
 import { useMiniApp } from '@/state/mini-app-provider';
 import { useDrafts } from '@/state/use-drafts';
+import { useProgress } from '@/state/use-progress';
 import { useLocalProfile } from '@/state/use-local-profile';
 
 const TICKER = ['Skill only', 'No luck', 'NIM · USDT', 'Winner takes all', 'Built on Nimiq'] as const;
 
 export default function HomePage() {
-  const { nimiq } = useMiniApp();
+  const { nimiq, host } = useMiniApp();
   const { displayName } = useLocalProfile();
   const { drafts } = useDrafts();
+  const { progress } = useProgress();
   const connected = nimiq.address !== null;
   const handle = displayName ?? defaultHandle(nimiq.address);
 
@@ -31,7 +35,9 @@ export default function HomePage() {
     <div className="space-y-6 pt-2">
       <Hero connected={connected} handle={handle} />
 
-      {connected ? <BalanceRail /> : <ConnectPanel />}
+      {connected ? <BalanceRail /> : host === 'unavailable' ? <OpenInNimiqPay /> : <ConnectPanel />}
+
+      <DailyCheckIn />
 
       <section>
         <div className="mb-3 flex items-baseline justify-between">
@@ -41,13 +47,32 @@ export default function HomePage() {
         <div className="grid grid-cols-2 gap-3">
           <StatTile label="Wins" value={0} accent="accent" icon="🏆" />
           <StatTile label="Win rate" value="—" accent="plain" icon="🎯" />
-          <StatTile label="Streak" value={0} accent="flame" icon="🔥" />
-          <StatTile label="Rank" value="—" accent="gold" icon="👑" />
+          <StatTile label="Streak" value={progress.streak} accent="flame" icon="🔥" />
+          <StatTile label="XP" value={progress.xp.toLocaleString()} accent="gold" icon="⭐" />
         </div>
         <PhaseNote className="mt-3">
-          Your record fills in once challenges go live. These are real counters at
-          zero, not a preview — nobody has played a TeTe match yet.
+          Streak and XP are live and yours. Wins and win rate stay at zero until
+          challenges go live — real counters, not a preview.
         </PhaseNote>
+      </section>
+
+      <section className="grid grid-cols-2 gap-3">
+        <Link
+          href="/arcade"
+          className="rounded-[var(--radius-sticker)] border-2 border-ink bg-accent p-4 shadow-[var(--shadow-sticker)] transition-transform duration-100 active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
+        >
+          <span aria-hidden className="text-[1.75rem] leading-none">🕹</span>
+          <span className="display mt-2.5 block text-[1.125rem] text-on-accent">Arcade</span>
+          <span className="mt-0.5 block text-[0.6875rem] text-on-accent/70">Play. Earn XP.</span>
+        </Link>
+        <Link
+          href="/leaderboard"
+          className="rounded-[var(--radius-sticker)] border-2 border-ink bg-contrast p-4 shadow-[var(--shadow-sticker)] transition-transform duration-100 active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
+        >
+          <span aria-hidden className="text-[1.75rem] leading-none">👑</span>
+          <span className="display mt-2.5 block text-[1.125rem] text-on-contrast">Ranks</span>
+          <span className="mt-0.5 block text-[0.6875rem] text-on-contrast/60">Season 01</span>
+        </Link>
       </section>
 
       <section>
