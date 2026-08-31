@@ -96,14 +96,22 @@ on mainnet chains, so do not send real USDT while testing.
 
 ### Deeplinks
 
-Once deployed over HTTPS, TeTe can be opened directly:
-
 ```
-https://nimpay.app/miniapps/open/your-domain.example
 nimiqpay://miniapp?url=your-domain.example
 ```
 
-The out-of-Nimiq-Pay screen renders the first of these for the current origin.
+The custom scheme is what the handoff screen uses. Nimiq Pay warns before
+loading a URL it does not recognise but does proceed, so this works for an app
+that is not in the directory yet.
+
+The documented HTTPS equivalent, `https://nimpay.app/miniapps/open/<domain>`, is
+**not** used. The docs state it "works with any domain"; in practice it answers
+404 — *"This app isn't in the directory"* — for anything unlisted. It becomes
+usable once TeTe is submitted to the Nimiq Pay catalogue.
+
+A custom scheme fails silently when the app is not installed and does nothing on
+desktop, and neither failure is detectable from the page. So the pasteable URL
+for **Mini Apps, Custom URL** is always shown, and is promoted after an attempt.
 
 ---
 
