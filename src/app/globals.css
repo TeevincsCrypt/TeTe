@@ -1,71 +1,84 @@
 @import 'tailwindcss';
 
 /* ---------------------------------------------------------------------------
-   TeTe design tokens.
+   TeTe design system — "arcade sticker"
 
-   Dark, high-contrast and competitive: a near-black ground, one acid accent for
-   anything actionable, and a violet reserved for the USDT/EVM side so the two
-   stake currencies stay visually distinct. Type is a system stack — no web font
-   is fetched, which keeps first paint fast inside the Nimiq Pay WebView and
-   avoids a network dependency that can fail on a phone's LAN connection.
+   The look is built on four moves, all of them cheap to render in a WebView:
+     1. Chunky uppercase display type, tightly tracked.
+     2. Alternating cream and near-black surfaces — never a wall of dark cards.
+     3. Hard offset shadows (no blur) and solid borders, so panels read as
+        stickers slapped onto the page rather than floating glass.
+     4. One acid accent doing all the pointing, with three support colours that
+        each mean exactly one thing: violet = USDT, flame = streak, gold = rank.
 --------------------------------------------------------------------------- */
 @theme {
-  --color-ink: #08090c;
-  --color-surface: #101218;
-  --color-surface-2: #171a22;
-  --color-line: #242833;
-  --color-line-soft: #1b1e27;
-  --color-text: #f3f5f9;
-  --color-muted: #8b91a2;
-  --color-faint: #5d6376;
+  /* Ground + dark surfaces */
+  --color-ink: #0a0b0f;
+  --color-panel: #151821;
+  --color-panel-2: #1d212c;
+  --color-line: #2a2f3d;
 
-  --color-accent: #c8ff4d;
-  --color-accent-dim: #9ecb2f;
-  --color-accent-ink: #0d1500;
+  /* Light "sticker" surfaces — the reference's key move */
+  --color-cream: #f2f1e4;
+  --color-cream-2: #e4e3d2;
 
+  /* Text */
+  --color-text: #f6f7f2;
+  --color-muted: #9aa1b4;
+  --color-faint: #666d80;
+
+  /* One accent leads, three support colours carry fixed meaning */
+  --color-lime: #c8ff4d;
+  --color-lime-deep: #a5db2c;
   --color-violet: #8b5cf6;
-  --color-violet-soft: #2a2145;
-
+  --color-flame: #ff6b35;
+  --color-gold: #ffc93c;
   --color-positive: #4ade80;
-  --color-caution: #ffc55c;
-  --color-negative: #ff6b6b;
+  --color-negative: #ff5c5c;
 
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    'Noto Sans', sans-serif;
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
 
-  --radius-card: 1.25rem;
+  --radius-sticker: 1.75rem;
+  --radius-chip: 999px;
 
-  --animate-rise: rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
-  --animate-shimmer: shimmer 1.4s ease-in-out infinite;
+  /* Hard, blur-free shadows. This is what makes a panel read as a sticker. */
+  --shadow-sticker: 4px 4px 0 var(--color-ink);
+  --shadow-sticker-sm: 3px 3px 0 var(--color-ink);
+  --shadow-lime: 4px 4px 0 var(--color-lime-deep);
+
+  --animate-rise: rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-pop: pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-marquee: marquee 26s linear infinite;
+  --animate-shimmer: shimmer 1.5s ease-in-out infinite;
+  --animate-spin-slow: spin 14s linear infinite;
+  --animate-bob: bob 3.2s ease-in-out infinite;
 
   @keyframes rise {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
+    from { opacity: 0; transform: translate3d(0, 12px, 0); }
+    to { opacity: 1; transform: none; }
   }
-
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes marquee {
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(-50%, 0, 0); }
+  }
   @keyframes shimmer {
-    0%,
-    100% {
-      opacity: 0.35;
-    }
-    50% {
-      opacity: 0.75;
-    }
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.7; }
+  }
+  @keyframes bob {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(0, -6px, 0); }
   }
 }
 
 @layer base {
   html {
     background-color: var(--color-ink);
-    /* Stop iOS/Android WebViews from re-flowing type on rotation. */
     -webkit-text-size-adjust: 100%;
   }
 
@@ -73,31 +86,46 @@
     background-color: var(--color-ink);
     color: var(--color-text);
     font-family: var(--font-sans);
-    /* The WebView is a fixed viewport: the page must never scroll sideways. */
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
   }
 
-  /* Tap highlights read as a rendering glitch in a native-feeling app. */
   * {
     -webkit-tap-highlight-color: transparent;
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 3px solid var(--color-lime);
     outline-offset: 2px;
   }
 
-  /* Numbers in balances and block heights must not jitter as they update. */
-  .tabular {
-    font-variant-numeric: tabular-nums;
+  /* Balances and counters must not jitter as they update. */
+  .tabular { font-variant-numeric: tabular-nums; }
+
+  /* The display voice: heavy, uppercase, tight. */
+  .display {
+    font-weight: 900;
+    letter-spacing: -0.035em;
+    /* Tight tracking closes up the spaces between words too, which made
+       headings read as one run-on word. This buys the gaps back. */
+    word-spacing: 0.12em;
+    text-transform: uppercase;
+    line-height: 0.92;
   }
 
+  .eyebrow {
+    font-weight: 700;
+    font-size: 0.6875rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  /* Horizontal rails scroll by touch without showing a scrollbar. */
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+
   @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
+    *, *::before, *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
