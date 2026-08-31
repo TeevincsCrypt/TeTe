@@ -5,7 +5,7 @@ export function Skeleton({ className }: { className?: string }) {
   return (
     <span
       aria-hidden
-      className={cn('block rounded-md bg-surface-2 animate-[var(--animate-shimmer)]', className)}
+      className={cn('block rounded-lg bg-panel-2 animate-[var(--animate-shimmer)]', className)}
     />
   );
 }

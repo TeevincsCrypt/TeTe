@@ -28,8 +28,10 @@ wallet, no placeholder balance and no simulated transaction anywhere in this cod
 | EVM account connection | ✅ | `eth_requestAccounts`, behind a user tap |
 | Active chain + chain switching | ✅ | `eth_chainId`, `wallet_switchEthereumChain` |
 | USDT balance | ✅ | `eth_call` → `balanceOf` on the real USDT contract |
-| Onboarding + Home screens | ✅ | Mobile-first, dark |
-| Challenges, escrow, reputation | ❌ not built | Phase 2+ |
+| Five working screens | ✅ | Home, Challenges, Create, Leaderboard, Profile |
+| Challenge builder | ✅ local only | Real 3-step form, saves an unfunded local draft |
+| Local display name + avatar | ✅ | Name stored on device, avatar derived from the address |
+| Escrow, invites, settlement, ranking | ❌ not built | Phase 2+ |
 
 No transaction is ever sent in Phase 1. The app only reads state and requests
 account access.
@@ -120,26 +122,29 @@ Blockchain interaction is kept strictly out of application logic.
 
 ```
 src/
-├── app/                    Next.js App Router: layout, the single route, global CSS
+├── app/                    App Router — one folder per screen
+│   ├── page.tsx            Home
+│   ├── challenges/         Challenges (drafts / active / done)
+│   ├── create/             Challenge builder, 3 steps
+│   ├── leaderboard/        Rankings
+│   ├── profile/            Player
+│   ├── icon.svg            Favicon
+│   └── globals.css         Design tokens
 ├── components/
-│   ├── ui/                 Button, Card, StatusPill, Skeleton
-│   ├── shell/              AppShell, TabBar, BrandMark, icons
-│   ├── onboarding/         OnboardingScreen (+ the outside-Nimiq-Pay fallback)
-│   └── home/               HomeScreen, NimAccountCard, UsdtCard, NetworkStrip, RoadmapCard
+│   ├── ui/                 Button, Sticker, Chip, StatTile, Segmented,
+│   │                       EmptyState, Avatar, Marquee, Sunburst, PhaseNote
+│   ├── shell/              AppFrame, TopBar, TabBar, BrandMark, icons
+│   └── wallet/             BalanceRail, ConnectPanel
 ├── lib/                    ← pure TypeScript. No React, no Next.js.
 │   ├── config/env.ts       Environment configuration
 │   ├── host/context.ts     window.nimiqPay: host language, device identifier
-│   ├── nimiq/
-│   │   ├── provider.ts     SDK init, error normalisation, account/chain/balance reads
-│   │   ├── units.ts        Luna ↔ NIM
-│   │   ├── address.ts      NQ address formatting
-│   │   └── types.ts        NimiqAccount, NimiqProviderError
-│   └── evm/
-│       ├── provider.ts     EIP-1193 access, error normalisation
-│       ├── chains.ts       Supported chains + verified USDT contracts
-│       └── erc20.ts        balanceOf via viem
-├── state/
-│   └── mini-app-provider.tsx   The only place lib/ meets React
+│   ├── nimiq/              SDK init, error normalisation, units, addresses
+│   ├── evm/                EIP-1193 access, chains, ERC-20 reads
+│   ├── challenges/         Challenge types + local draft storage
+│   ├── profile/            Local display name
+│   ├── clipboard.ts        Copy with a non-secure-context fallback
+│   └── ids.ts              ID generation with a non-secure-context fallback
+├── state/                  The only place lib/ meets React
 └── types/                  Domain vocabulary
 ```
 
@@ -152,6 +157,36 @@ That seam is what makes Phase 2 additive rather than a rewrite. `lib/challenges`
 pure modules; the challenge state machine will be a reducer that consumes escrow
 events. Those folders are deliberately **not** created yet — there is nothing to put
 in them, and empty abstractions are harder to remove than to add.
+
+---
+
+## Design
+
+TeTe is meant to feel like a game you open for fun, not a dashboard you check.
+The visual language leans on four cheap-to-render moves:
+
+- **Chunky uppercase display type.** Archivo 900, tightly tracked, loaded through
+  `next/font` so it is self-hosted at build time — no runtime request to Google,
+  no layout shift on a phone connection.
+- **Alternating cream and near-black surfaces.** The light "sticker" panels are
+  what stop the app reading as another dark crypto dashboard.
+- **Hard, blur-free shadows.** A solid offset shadow plus a real border makes a
+  panel read as a sticker rather than floating glass. Pressing a button collapses
+  the shadow and nudges the element into it, so a tap feels physical.
+- **One accent that leads.** Lime points at every action. Violet means USDT,
+  flame means streak, gold means rank — each support colour carries exactly one
+  meaning, so colour is information rather than decoration.
+
+Motion is limited to `transform` and `opacity` so it stays on the compositor,
+and everything is disabled under `prefers-reduced-motion`.
+
+### Honest empty states
+
+Most of TeTe is legitimately empty — no match has ever been played. Rather than
+fill screens with sample opponents and invented win rates, emptiness gets
+designed: a podium with nobody on it, counters sitting at a real zero, and a
+`PhaseNote` wherever a surface will later hold live data. Nothing on screen can
+be mistaken for a working on-chain feature.
 
 ---
 
@@ -274,7 +309,8 @@ mode with nothing to gain.
 
 Phase 1 is the foundation. What comes next, in order:
 
-1. **Challenges** — create a challenge, pick a skill format, invite by shareable link.
+1. **Challenges** — the builder exists and saves local drafts today; next comes
+   sending an invite by shareable link.
 2. **Escrow** — both players fund, funds held until settlement.
 3. **Results** — submit and confirm, with both players signing the outcome
    (`nimiq.sign()` / `eth_signTypedData_v4`) so neither can later deny it.

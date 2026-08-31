@@ -1,6 +1,6 @@
 /**
- * Inline SVG icons. Kept local rather than pulling an icon package: the app
- * needs six glyphs, and a dependency for that is weight the WebView pays for.
+ * Inline SVG icons. Local rather than an icon package: the app needs a handful
+ * of glyphs and a dependency is weight the WebView would pay for on every open.
  */
 import type { SVGProps } from 'react';
 
@@ -8,7 +8,7 @@ const base: SVGProps<SVGSVGElement> = {
   viewBox: '0 0 24 24',
   fill: 'none',
   stroke: 'currentColor',
-  strokeWidth: 1.75,
+  strokeWidth: 2,
   strokeLinecap: 'round',
   strokeLinejoin: 'round',
   'aria-hidden': true,
@@ -67,6 +67,48 @@ export function RefreshIcon(props: SVGProps<SVGSVGElement>) {
       <path d="M4 4v4h4" />
       <path d="M4 13a8 8 0 0 0 13.7 5.3L20 16" />
       <path d="M20 20v-4h-4" />
+    </svg>
+  );
+}
+
+export function ChevronLeftIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <path d="m15 5-7 7 7 7" />
+    </svg>
+  );
+}
+
+export function ChevronRightIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <path d="m9 5 7 7-7 7" />
+    </svg>
+  );
+}
+
+export function CheckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <path d="m4 12 5.5 5.5L20 7" />
+    </svg>
+  );
+}
+
+export function TrashIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" />
+    </svg>
+  );
+}
+
+export function WalletIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3 8a2 2 0 0 1 2-2h13v3" />
+      <path d="M3 8v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9H5" />
+      <circle cx="16.5" cy="13.5" r="1.2" fill="currentColor" stroke="none" />
     </svg>
   );
 }
