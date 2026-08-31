@@ -4,6 +4,7 @@ import Link from 'next/link';
 
 import { DailyCheckIn } from '@/components/arcade/DailyCheckIn';
 import { GameGlyph } from '@/components/arcade/GameGlyph';
+import { FormatArt } from '@/components/challenges/FormatArt';
 import { OpenInNimiqPay } from '@/components/shell/OpenInNimiqPay';
 import {
   ChevronRightIcon,
@@ -120,11 +121,14 @@ export default function HomePage() {
             <Link
               key={format.id}
               href={`/create?format=${format.id}`}
-              className="w-[8.75rem] shrink-0 rounded-2xl bg-panel-2 p-4 transition-transform duration-100 active:scale-[0.97]"
+              className="w-[9.5rem] shrink-0 overflow-hidden rounded-2xl bg-panel-2 transition-transform duration-100 active:scale-[0.97]"
             >
-              <span className="block text-[0.9375rem] font-black tracking-tight">{format.name}</span>
-              <span className="mt-1 block text-[0.6875rem] leading-snug text-faint">
-                {format.tagline}
+              <FormatArt id={format.id} rounded="rounded-none" className="h-20 w-full" />
+              <span className="block px-3.5 pb-3.5 pt-3">
+                <span className="block text-[0.9375rem] font-black tracking-tight">{format.name}</span>
+                <span className="mt-0.5 block text-[0.6875rem] leading-snug text-faint">
+                  {format.tagline}
+                </span>
               </span>
             </Link>
           ))}

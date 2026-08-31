@@ -20,7 +20,7 @@ import { NoticeBar, NoticeBell } from './NoticeBar';
 export function TopBar() {
   const [noticesOpen, setNoticesOpen] = useState(false);
   const { nimiq } = useMiniApp();
-  const { displayName } = useLocalProfile();
+  const { displayName, avatarSeed, photo } = useLocalProfile();
   const connected = nimiq.address !== null;
   const handle = displayName ?? defaultHandle(nimiq.address);
 
@@ -50,7 +50,7 @@ export function TopBar() {
             <span className="max-w-[6.5rem] truncate text-[0.8125rem] font-bold text-on-contrast">
               {handle}
             </span>
-            <Avatar address={nimiq.address} size={30} />
+            <Avatar address={nimiq.address} size={30} seed={avatarSeed} photo={photo} />
           </Link>
           ) : (
             <span className="flex min-h-10 items-center gap-1.5 rounded-full border border-on-contrast/25 px-3 text-[0.75rem] font-bold text-on-contrast/70">

@@ -24,13 +24,29 @@ export function Avatar({
   size = 44,
   className,
   seed,
+  photo,
 }: {
   address: string | null;
   size?: number;
   className?: string;
   /** Overrides the address-derived look when the player has picked one. */
   seed?: number | null;
+  /** A chosen photo, which wins over the generated face. */
+  photo?: string | null;
 }) {
+  if (photo) {
+    return (
+      <span
+        className={cn('inline-block shrink-0 overflow-hidden rounded-full bg-panel-2', className)}
+        style={{ width: size, height: size }}
+      >
+        {/* A local data URL, so next/image would only add indirection. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={photo} alt="" width={size} height={size} className="size-full object-cover" />
+      </span>
+    );
+  }
+
   const hash = seed === null || seed === undefined ? hashString(address ?? 'tete') : seed;
   const palette = PALETTES[hash % PALETTES.length] ?? PALETTES[0];
   const [bg, fg] = palette;

@@ -248,6 +248,37 @@ composited animation rather than a black screen. A clip that has not begun
 within 1.8s is abandoned for the same reason. Point `NEXT_PUBLIC_INTRO_VIDEO`
 elsewhere to swap the film, or set it empty to always animate.
 
+### Escrow
+
+Escrow is **custodial**. Both players send their stake to a treasury address and
+the treasury pays the winner. That is not the first choice — a hashed-timelock
+contract would hold the pot trustlessly — but the Mini App provider can only
+create basic and staking transactions, so it cannot build an HTLC on a player's
+behalf. Custody is the only shape that works through the provider today, and
+while a challenge is funded the operator holds the money.
+
+The flow, with what is checked at each step:
+
+| Step | Guard |
+| --- | --- |
+| Post a challenge | Signature proves the host owns the address |
+| Aim it at `@name` | Username resolved through the directory — no address typed |
+| Accept | Only the invited player, or anyone if it is open |
+| Fund | A confirmed on-chain transfer to the treasury, from that player, for at least the stake, carrying the challenge id |
+| Report | Only the two players in the match |
+| Settle | Both reports agree; the pot is sent to the winner |
+| Disagree | State becomes `disputed` and **nothing is paid** |
+
+Every write is authorised by a signature over that exact action and a
+timestamp, so a signature captured for one request cannot be replayed as
+another. The server checks both that the signature verifies *and* that the
+address derived from the public key is the address being claimed — checking
+only the first would let anyone sign with their own key while claiming
+somebody else's address.
+
+Conflicting reports are never resolved automatically. Choosing a winner from
+contradictory claims is precisely the decision that needs a human or an oracle.
+
 ### Rewards, and why they are unpaid
 
 The arcade and the daily check-in credit **NIM** to a rewards ledger. Those

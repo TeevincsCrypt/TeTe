@@ -1,9 +1,10 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 
 import { CheckIcon, ChevronLeftIcon, GlobeIcon, SwordsIcon, TargetIcon } from '@/components/shell/icons';
+import { FormatArt } from '@/components/challenges/FormatArt';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
@@ -18,10 +19,10 @@ import { defaultHandle } from '@/lib/profile/local-profile';
 import { useLocalProfile } from '@/state/use-local-profile';
 import { CHALLENGE_FORMATS, type ChallengeFormatId, type OpponentMode } from '@/lib/challenges/types';
 import { createId } from '@/lib/ids';
-import { shortenAddress } from '@/lib/nimiq/address';
+import { compactAddress } from '@/lib/nimiq/address';
 import type { RosterPlayer } from '@/lib/roster/roster';
 import { useMiniApp } from '@/state/mini-app-provider';
-import { useRoster } from '@/state/use-roster';
+import { ApiError, lookupPlayer } from '@/lib/api/client';
 import type { StakeCurrency } from '@/types';
 
 const QUICK_STAKES: Record<StakeCurrency, readonly number[]> = {
@@ -202,17 +203,22 @@ function FormatStep({
               onClick={() => onFormat(option.id)}
               aria-pressed={active}
               className={cn(
-                'rounded-[var(--radius-sticker)] border-2 p-4 text-left transition-all duration-150',
-                'active:scale-[0.97]',
-                active
-                  ? 'border-line bg-accent text-on-accent shadow-[var(--shadow-sticker)]'
-                  : 'border-line bg-panel text-text',
+                'overflow-hidden rounded-2xl text-left transition-all duration-150 active:scale-[0.97]',
+                active ? 'bg-contrast text-on-contrast ring-2 ring-accent' : 'bg-panel-2 text-text',
               )}
             >
-              <p className="text-[1.0625rem] font-black tracking-tight">{option.name}</p>
-              <p className={cn('mt-1 text-[0.6875rem] leading-snug', active ? 'text-on-contrast/70' : 'text-faint')}>
-                {option.tagline}
-              </p>
+              <FormatArt id={option.id} rounded="rounded-none" className="h-16 w-full" />
+              <span className="block p-3.5">
+                <span className="block text-[1rem] font-black tracking-tight">{option.name}</span>
+                <span
+                  className={cn(
+                    'mt-0.5 block text-[0.6875rem] leading-snug',
+                    active ? 'text-on-contrast/70' : 'text-faint',
+                  )}
+                >
+                  {option.tagline}
+                </span>
+              </span>
             </button>
           );
         })}
@@ -350,8 +356,54 @@ function OpponentStep({
   onNote: (value: string) => void;
   selfAddress: string | null;
 }) {
-  const { players, add } = useRoster();
-  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [status, setStatus] = useState<'idle' | 'searching' | 'found' | 'missing' | 'offline'>('idle');
+  const [error, setError] = useState<string | null>(null);
+
+  // The name is resolved as it is typed. Nobody types an address here any
+  // more: the directory turns a handle into one.
+  useEffect(() => {
+    const query = name.trim();
+    if (query.length < 3) {
+      setStatus('idle');
+      onRival(null);
+      return;
+    }
+
+    let cancelled = false;
+    setStatus('searching');
+    const timer = setTimeout(async () => {
+      try {
+        const found = await lookupPlayer(query);
+        if (cancelled) return;
+        if (!found) {
+          setError(null);
+          setStatus('missing');
+          onRival(null);
+          return;
+        }
+        if (selfAddress && compactAddress(found.address) === compactAddress(selfAddress)) {
+          setError('That is you.');
+          setStatus('missing');
+          onRival(null);
+          return;
+        }
+        setError(null);
+        setStatus('found');
+        onRival({ id: found.address, username: found.username, address: found.address, addedAt: Date.now() });
+      } catch (cause: unknown) {
+        if (cancelled) return;
+        // A deployment without the directory configured answers 503.
+        setStatus(cause instanceof ApiError && cause.status === 503 ? 'offline' : 'missing');
+        onRival(null);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [name, onRival, selfAddress]);
 
   return (
     <div className="space-y-3">
@@ -361,86 +413,64 @@ function OpponentStep({
           onSelect={() => onMode('open')}
           glyph={<GlobeIcon className="size-5" />}
           title="Open challenge"
-          body="Anyone can accept it from the marketplace."
+          body="Anyone can accept it from the board."
         />
         <ModeOption
           active={mode === 'direct'}
           onSelect={() => onMode('direct')}
           glyph={<TargetIcon className="size-5" />}
           title="Challenge a player"
-          body="Send it to someone on your roster, by username."
+          body="Call someone out by their username."
         />
       </div>
 
       {mode === 'direct' && (
         <div className="space-y-3 animate-[var(--animate-pop)]">
-          {players.length > 0 && (
-            <Sticker tone="panel">
-              <Eyebrow className="text-faint">Your roster</Eyebrow>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {players.map((player) => {
-                  const active = rival?.id === player.id;
-                  return (
-                    <button
-                      key={player.id}
-                      type="button"
-                      onClick={() => onRival(active ? null : player)}
-                      aria-pressed={active}
-                      className={cn(
-                        'flex min-h-11 items-center gap-2 rounded-full px-3 pr-4',
-                        'text-[0.8125rem] font-bold transition-all duration-150 active:scale-95',
-                        active
-                          ? 'bg-accent text-on-accent'
-                          : 'bg-panel-2 text-muted',
-                      )}
-                    >
-                      <Avatar address={player.address} size={24} />@{player.username}
-                    </button>
-                  );
-                })}
-              </div>
-            </Sticker>
-          )}
+          <Sticker tone="panel">
+            <label htmlFor="rival" className="eyebrow text-faint">
+              Their username
+            </label>
+            <div className="mt-2.5 flex items-center rounded-xl border border-line bg-panel-2 pl-3.5 focus-within:border-accent">
+              <span className="text-[1rem] font-black text-faint">@</span>
+              <input
+                id="rival"
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setError(null);
+                }}
+                placeholder="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                maxLength={16}
+                className="w-full min-w-0 bg-transparent px-1.5 py-3 text-[1rem] font-bold text-text placeholder:text-faint focus:outline-none"
+              />
+              {status === 'searching' && (
+                <span className="mr-3 size-4 shrink-0 animate-spin rounded-full border-2 border-faint border-t-transparent" />
+              )}
+            </div>
 
-          {rival && (
+            {status === 'missing' && (
+              <p className="mt-2 text-[0.75rem] font-semibold text-negative">
+                {error ?? `No player called @${name.trim()} yet. They claim their name in TeTe first.`}
+              </p>
+            )}
+            {status === 'offline' && (
+              <p className="mt-2 text-[0.75rem] font-semibold text-gold">
+                The player directory is not configured on this deployment.
+              </p>
+            )}
+          </Sticker>
+
+          {rival && status === 'found' && (
             <div className="rounded-2xl bg-contrast p-4 animate-[var(--animate-pop)]">
               <Eyebrow className="text-on-contrast/60">Opponent</Eyebrow>
               <div className="mt-2.5 flex items-center gap-3">
                 <Avatar address={rival.address} size={40} />
-                <div className="min-w-0">
-                  <p className="display text-[1.125rem] text-on-contrast">@{rival.username}</p>
-                  <p className="truncate font-mono text-[0.6875rem] text-on-contrast/60">
-                    {shortenAddress(rival.address)}
-                  </p>
-                </div>
+                <p className="display text-[1.125rem] text-on-contrast">@{rival.username}</p>
               </div>
             </div>
-          )}
-
-          {adding ? (
-            <AddPlayerForm
-              selfAddress={selfAddress}
-              onCancel={() => setAdding(false)}
-              onAdd={(username, address) => {
-                const result = add(username, address);
-                if (result.ok) {
-                  onRival(result.player);
-                  setAdding(false);
-                }
-                return result;
-              }}
-            />
-          ) : (
-            <Button variant="outline" onClick={() => setAdding(true)}>
-              + Add a player
-            </Button>
-          )}
-
-          {players.length === 0 && !adding && (
-            <PhaseNote>
-              TeTe has no global username directory yet, so you add a player once with
-              their address and can challenge them by name from then on.
-            </PhaseNote>
           )}
         </div>
       )}
@@ -461,97 +491,6 @@ function OpponentStep({
         <p className="mt-1 text-right text-[0.6875rem] text-faint tabular">{note.length}/200</p>
       </Sticker>
     </div>
-  );
-}
-
-/**
- * Saving a new opponent. The address is required exactly once — TeTe cannot
- * resolve a username to an address on its own, so the first introduction has to
- * carry one. After that the player is reachable by name.
- */
-function AddPlayerForm({
-  onAdd,
-  onCancel,
-  selfAddress,
-}: {
-  onAdd: (username: string, address: string) => { ok: boolean; error?: string };
-  onCancel: () => void;
-  selfAddress: string | null;
-}) {
-  const [username, setUsername] = useState('');
-  const [address, setAddress] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const isSelf =
-    selfAddress !== null &&
-    address.replace(/\s+/g, '').toUpperCase() === selfAddress.replace(/\s+/g, '').toUpperCase();
-
-  function submit() {
-    if (isSelf) {
-      setError('That is your own address — you cannot challenge yourself.');
-      return;
-    }
-    const result = onAdd(username, address);
-    if (!result.ok) setError(result.error ?? 'Could not add that player.');
-  }
-
-  return (
-    <Sticker tone="panel" className="animate-[var(--animate-pop)]">
-      <Eyebrow className="text-faint">New player</Eyebrow>
-
-      <label htmlFor="username" className="sr-only">
-        Username
-      </label>
-      <div className="mt-2.5 flex items-center rounded-xl border border-line bg-panel-2 pl-3.5 focus-within:border-accent">
-        <span className="text-[0.9375rem] font-black text-faint">@</span>
-        <input
-          id="username"
-          value={username}
-          onChange={(event) => {
-            setUsername(event.target.value);
-            setError(null);
-          }}
-          placeholder="username"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          maxLength={16}
-          className="w-full min-w-0 bg-transparent px-1.5 py-3 text-[0.9375rem] font-bold text-text placeholder:text-faint focus:outline-none"
-        />
-      </div>
-
-      <label htmlFor="address" className="sr-only">
-        Their Nimiq address
-      </label>
-      <input
-        id="address"
-        value={address}
-        onChange={(event) => {
-          setAddress(event.target.value);
-          setError(null);
-        }}
-        placeholder="NQ.. .. .. .."
-        autoCapitalize="characters"
-        autoCorrect="off"
-        spellCheck={false}
-        className="mt-2 w-full rounded-xl border border-line bg-panel-2 px-3.5 py-3 font-mono text-[0.8125rem] text-text placeholder:text-faint focus:border-accent focus:outline-none"
-      />
-
-      {error && (
-        <p role="alert" className="mt-2 text-[0.75rem] font-semibold text-negative">
-          {error}
-        </p>
-      )}
-
-      <div className="mt-3 flex gap-2">
-        <Button variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button onClick={submit} disabled={!username.trim() || !address.trim()}>
-          Save player
-        </Button>
-      </div>
-    </Sticker>
   );
 }
 

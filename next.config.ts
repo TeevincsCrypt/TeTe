@@ -16,6 +16,13 @@ const nextConfig: NextConfig = {
   agentRules: false,
 
   /**
+   * `@nimiq/core` is a Rust-to-WASM build. Bundling it into the server output
+   * breaks the relative path it uses to locate its own .wasm file, so it is
+   * left as a real node_modules import that resolves at runtime instead.
+   */
+  serverExternalPackages: ['@nimiq/core'],
+
+  /**
    * Testing a Mini App means opening the dev server from a phone on the same
    * Wi-Fi — `http://192.168.x.x:5173`, never `localhost`. Next.js 16 rejects
    * dev asset requests from origins it was not told about, which shows up as

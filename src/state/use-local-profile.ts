@@ -13,18 +13,22 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   readAvatarSeed,
   readDisplayName,
+  readPhoto,
   writeAvatarSeed,
   writeDisplayName,
+  writePhoto,
 } from '@/lib/profile/local-profile';
 
 export function useLocalProfile() {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [avatarSeed, setAvatarSeed] = useState<number | null>(null);
+  const [photo, setPhoto] = useState<string | null>(null);
 
   useEffect(() => {
     const sync = () => {
       setDisplayName(readDisplayName());
       setAvatarSeed(readAvatarSeed());
+      setPhoto(readPhoto());
     };
     sync();
     window.addEventListener('tete:profile-changed', sync);
@@ -41,5 +45,10 @@ export function useLocalProfile() {
     setAvatarSeed(readAvatarSeed());
   }, []);
 
-  return { displayName, save, avatarSeed, saveAvatar };
+  const savePhoto = useCallback((dataUrl: string | null) => {
+    writePhoto(dataUrl);
+    setPhoto(readPhoto());
+  }, []);
+
+  return { displayName, save, avatarSeed, saveAvatar, photo, savePhoto };
 }

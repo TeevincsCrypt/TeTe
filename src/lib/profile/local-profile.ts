@@ -71,3 +71,64 @@ export function writeAvatarSeed(seed: number | null): void {
     /* Storage unavailable. */
   }
 }
+
+const PHOTO_KEY = 'tete.photo.v1';
+/** Stored as a data URL in localStorage, which is small and has a hard cap. */
+export const MAX_PHOTO_BYTES = 120_000;
+
+export function readPhoto(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(PHOTO_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function writePhoto(dataUrl: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (dataUrl) window.localStorage.setItem(PHOTO_KEY, dataUrl);
+    else window.localStorage.removeItem(PHOTO_KEY);
+    window.dispatchEvent(new CustomEvent('tete:profile-changed'));
+  } catch {
+    /* Storage full or unavailable; the picture is simply not kept. */
+  }
+}
+
+/**
+ * Downscale a chosen image to a square thumbnail before storing it.
+ *
+ * A phone photo is several megabytes, which would blow the localStorage quota
+ * outright. Cropping to a centred square and re-encoding as JPEG keeps it in
+ * the tens of kilobytes, and the picture is only ever shown small.
+ */
+export async function preparePhoto(file: File, size = 256): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Could not read that image.');
+  ctx.drawImage(
+    bitmap,
+    (bitmap.width - side) / 2,
+    (bitmap.height - side) / 2,
+    side,
+    side,
+    0,
+    0,
+    size,
+    size,
+  );
+  bitmap.close();
+
+  // Step the quality down until it fits, rather than failing on a large photo.
+  for (const quality of [0.82, 0.7, 0.6, 0.5, 0.4]) {
+    const url = canvas.toDataURL('image/jpeg', quality);
+    if (url.length <= MAX_PHOTO_BYTES) return url;
+  }
+  throw new Error('That image is too large, even compressed.');
+}
