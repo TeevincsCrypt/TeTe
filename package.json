@@ -1,0 +1,32 @@
+{
+  "name": "tete",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TeTe — peer-to-peer skill challenges, running as a Nimiq Pay Mini App.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 5173",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p 5173",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@nimiq/mini-app-sdk": "0.1.0",
+    "next": "16.3.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "viem": "2.56.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3"
+  }
+}
