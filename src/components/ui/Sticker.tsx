@@ -5,11 +5,11 @@ import { cn } from './cn';
 type Tone = 'contrast' | 'panel' | 'accent' | 'violet' | 'outline';
 
 const TONES: Record<Tone, string> = {
-  contrast: 'bg-contrast text-on-contrast border-ink shadow-[var(--shadow-sticker)]',
-  panel: 'bg-panel text-text border-ink/12 shadow-none',
-  accent: 'bg-accent text-on-accent border-ink shadow-[var(--shadow-sticker)]',
-  violet: 'bg-violet text-white border-ink shadow-[var(--shadow-sticker)]',
-  outline: 'bg-transparent text-text border-line shadow-none',
+  contrast: 'bg-contrast text-on-contrast border-transparent',
+  panel: 'bg-panel-2 text-text border-transparent',
+  accent: 'bg-accent text-on-accent border-transparent',
+  violet: 'bg-violet text-white border-transparent',
+  outline: 'bg-transparent text-text border-ink/15',
 };
 
 /**
@@ -28,7 +28,7 @@ export function Sticker({
   return (
     <div
       className={cn(
-        'relative rounded-[var(--radius-sticker)] border-2 p-5',
+        'relative rounded-2xl border p-5',
         TONES[tone],
         className,
       )}

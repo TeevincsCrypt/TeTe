@@ -20,7 +20,7 @@ export function Segmented<T extends string>({
   return (
     <div
       role="tablist"
-      className={cn('flex gap-1 rounded-full border-2 border-ink/15 bg-panel-2 p-1', className)}
+      className={cn('flex gap-1 rounded-full bg-panel-2 p-1', className)}
     >
       {options.map((option) => {
         const active = option.id === value;
@@ -33,7 +33,7 @@ export function Segmented<T extends string>({
             className={cn(
               'flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-full px-3',
               'text-[0.8125rem] font-bold tracking-tight transition-colors duration-150',
-              active ? 'bg-accent text-on-accent shadow-[var(--shadow-sticker-sm)]' : 'text-muted active:bg-panel',
+              active ? 'bg-ink text-on-contrast' : 'text-muted active:bg-panel',
             )}
           >
             {option.label}
@@ -41,7 +41,7 @@ export function Segmented<T extends string>({
               <span
                 className={cn(
                   'rounded-full px-1.5 py-0.5 text-[0.625rem] font-black tabular',
-                  active ? 'bg-ink/20 text-ink' : 'bg-panel text-faint',
+                  active ? 'bg-on-contrast/20 text-on-contrast' : 'bg-panel text-faint',
                 )}
               >
                 {option.count}

@@ -10,9 +10,9 @@ type Size = 'md' | 'lg';
 
 const VARIANTS: Record<Variant, string> = {
   primary: 'bg-accent text-on-accent border-ink shadow-[var(--shadow-sticker)]',
-  contrast: 'bg-contrast text-on-contrast border-ink shadow-[var(--shadow-sticker)]',
-  violet: 'bg-violet text-white border-ink shadow-[var(--shadow-sticker)]',
-  outline: 'bg-transparent text-text border-ink/25 hover:border-accent hover:text-accent-text shadow-none',
+  contrast: 'bg-contrast text-on-contrast border-transparent',
+  violet: 'bg-violet text-white border-transparent',
+  outline: 'bg-transparent text-text border-ink/20 hover:border-accent hover:text-accent-text',
   ghost: 'bg-transparent text-muted border-transparent shadow-none hover:text-text',
 };
 
@@ -27,7 +27,7 @@ const SIZES: Record<Size, string> = {
  * reads as the sticker being pushed down rather than a colour change.
  */
 const BASE = cn(
-  'inline-flex w-full items-center justify-center gap-2 rounded-full border-2',
+  'inline-flex w-full items-center justify-center gap-2 rounded-full border',
   'font-bold tracking-tight',
   'transition-[transform,box-shadow,background-color,border-color,color] duration-100',
   'active:translate-x-[3px] active:translate-y-[3px] active:shadow-none',

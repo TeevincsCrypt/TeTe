@@ -16,7 +16,7 @@ export function ConnectPanel() {
   const { host, nimiq, connectNimiq } = useMiniApp();
 
   return (
-    <Sticker tone="contrast" className="overflow-hidden">
+    <Sticker tone="contrast" className="overflow-hidden rounded-3xl p-6">
       <p className="eyebrow text-on-contrast/50">Step one</p>
       <h2 className="display mt-1.5 text-[1.5rem] text-on-contrast">Bring your wallet</h2>
       <p className="mt-2 text-[0.875rem] leading-relaxed text-on-contrast/70">

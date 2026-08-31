@@ -2,14 +2,14 @@
 
 import { useState } from 'react';
 
-import { TrashIcon } from '@/components/shell/icons';
+import { BoltIcon, FlagIcon, NoteIcon, SwordsIcon, TrashIcon } from '@/components/shell/icons';
 import { ButtonLink } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PhaseNote } from '@/components/ui/PhaseNote';
 import { Segmented } from '@/components/ui/Segmented';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
-import { draftTitle, formatById, type ChallengeDraft } from '@/lib/challenges/types';
+import { draftTitle, type ChallengeDraft } from '@/lib/challenges/types';
 import { shortenAddress } from '@/lib/nimiq/address';
 import { useDrafts } from '@/state/use-drafts';
 
@@ -51,7 +51,7 @@ export default function ChallengesPage() {
           {loaded && drafts.length === 0 && (
             <Sticker tone="panel" className="px-0 py-0">
               <EmptyState
-                glyph="📝"
+                glyph={<NoteIcon className="size-7" />}
                 title="No drafts yet"
                 body="Build a challenge and it lands here, ready to fund when escrow ships."
                 action={<ButtonLink href="/create">Create challenge</ButtonLink>}
@@ -76,7 +76,7 @@ export default function ChallengesPage() {
       {tab === 'active' && (
         <Sticker tone="panel" className="px-0 py-0">
           <EmptyState
-            glyph="⚡"
+            glyph={<BoltIcon className="size-7" />}
             title="Nothing live"
             body="Once both players fund a challenge, the match appears here with its stake locked in escrow."
           />
@@ -86,7 +86,7 @@ export default function ChallengesPage() {
       {tab === 'done' && (
         <Sticker tone="panel" className="px-0 py-0">
           <EmptyState
-            glyph="🏁"
+            glyph={<FlagIcon className="size-7" />}
             title="No results yet"
             body="Finished matches, confirmed results and payouts will be listed here."
           />
@@ -97,16 +97,15 @@ export default function ChallengesPage() {
 }
 
 function DraftRow({ draft, onDelete }: { draft: ChallengeDraft; onDelete: () => void }) {
-  const format = formatById(draft.format);
 
   return (
     <article className="rounded-[var(--radius-sticker)] border-2 border-line bg-panel p-4 animate-[var(--animate-rise)]">
       <div className="flex items-start gap-3.5">
         <span
           aria-hidden
-          className="flex size-11 shrink-0 items-center justify-center rounded-2xl border-2 border-line bg-panel-2 text-[1.25rem]"
+          className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-ink text-accent"
         >
-          {format.icon}
+          <SwordsIcon className="size-5" />
         </span>
 
         <div className="min-w-0 flex-1">

@@ -24,7 +24,7 @@ export function BalanceRail() {
   );
 }
 
-const CARD = 'relative w-[63%] shrink-0 snap-start overflow-hidden rounded-[var(--radius-sticker)] border-2 border-ink p-4 shadow-[var(--shadow-sticker)]';
+const CARD = 'relative w-[63%] shrink-0 snap-start overflow-hidden rounded-2xl p-4';
 
 function NimBalance() {
   const { nimiq, locale, hasNimiqRpc, refreshNimiqBalance } = useMiniApp();
@@ -102,7 +102,7 @@ function UsdtBalance() {
           <button
             type="button"
             onClick={connectEvm}
-            className="min-h-10 rounded-full border-2 border-white/40 px-4 text-[0.8125rem] font-bold transition-transform active:scale-95"
+            className="min-h-10 rounded-full border border-white/40 px-4 text-[0.8125rem] font-bold transition-transform active:scale-95"
           >
             {evm.status === 'loading' ? 'Waiting…' : 'Connect'}
           </button>
@@ -118,7 +118,7 @@ function UsdtBalance() {
           <button
             type="button"
             onClick={switchToPreferredChain}
-            className="min-h-10 rounded-full border-2 border-white/40 px-4 text-left text-[0.75rem] font-bold leading-tight transition-transform active:scale-95"
+            className="min-h-10 rounded-full border border-white/40 px-4 text-left text-[0.75rem] font-bold leading-tight transition-transform active:scale-95"
           >
             Switch to {preferredName}
           </button>

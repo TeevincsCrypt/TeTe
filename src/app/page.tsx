@@ -3,25 +3,28 @@
 import Link from 'next/link';
 
 import { DailyCheckIn } from '@/components/arcade/DailyCheckIn';
+import { GameGlyph } from '@/components/arcade/GameGlyph';
 import { OpenInNimiqPay } from '@/components/shell/OpenInNimiqPay';
-import { ButtonLink } from '@/components/ui/Button';
-import { Chip } from '@/components/ui/Chip';
-import { EmptyState } from '@/components/ui/EmptyState';
+import {
+  ChevronRightIcon,
+  CrownIcon,
+  FlameIcon,
+  StarIcon,
+  SwordsIcon,
+  TrophyIcon,
+} from '@/components/shell/icons';
 import { Marquee } from '@/components/ui/Marquee';
-import { PhaseNote } from '@/components/ui/PhaseNote';
-import { StatTile } from '@/components/ui/StatTile';
-import { Eyebrow, Sticker } from '@/components/ui/Sticker';
-import { Sunburst } from '@/components/ui/Sunburst';
 import { BalanceRail } from '@/components/wallet/BalanceRail';
 import { ConnectPanel } from '@/components/wallet/ConnectPanel';
+import { GAMES } from '@/lib/arcade/games';
 import { CHALLENGE_FORMATS } from '@/lib/challenges/types';
 import { defaultHandle } from '@/lib/profile/local-profile';
 import { useMiniApp } from '@/state/mini-app-provider';
 import { useDrafts } from '@/state/use-drafts';
-import { useProgress } from '@/state/use-progress';
 import { useLocalProfile } from '@/state/use-local-profile';
+import { useProgress } from '@/state/use-progress';
 
-const TICKER = ['Skill only', 'No luck', 'NIM · USDT', 'Winner takes all', 'Built on Nimiq'] as const;
+const TICKER = ['Skill only', 'No luck', 'NIM and USDT', 'Winner takes all', 'Built on Nimiq'] as const;
 
 export default function HomePage() {
   const { nimiq, host } = useMiniApp();
@@ -32,135 +35,156 @@ export default function HomePage() {
   const handle = displayName ?? defaultHandle(nimiq.address);
 
   return (
-    <div className="space-y-6 pt-2">
-      <Hero connected={connected} handle={handle} />
-
-      {connected ? <BalanceRail /> : host === 'unavailable' ? <OpenInNimiqPay /> : <ConnectPanel />}
-
-      <DailyCheckIn />
-
-      <section>
-        <div className="mb-3 flex items-baseline justify-between">
-          <Eyebrow className="text-faint">Your record</Eyebrow>
-          <Chip tone="neutral">Season 01</Chip>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <StatTile label="Wins" value={0} accent="accent" icon="🏆" />
-          <StatTile label="Win rate" value="—" accent="plain" icon="🎯" />
-          <StatTile label="Streak" value={progress.streak} accent="flame" icon="🔥" />
-          <StatTile label="XP" value={progress.xp.toLocaleString()} accent="gold" icon="⭐" />
-        </div>
-        <PhaseNote className="mt-3">
-          Streak and XP are live and yours. Wins and win rate stay at zero until
-          challenges go live — real counters, not a preview.
-        </PhaseNote>
-      </section>
-
-      <section className="grid grid-cols-2 gap-3">
-        <Link
-          href="/arcade"
-          className="rounded-[var(--radius-sticker)] border-2 border-ink bg-accent p-4 shadow-[var(--shadow-sticker)] transition-transform duration-100 active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
-        >
-          <span aria-hidden className="text-[1.75rem] leading-none">🕹</span>
-          <span className="display mt-2.5 block text-[1.125rem] text-on-accent">Arcade</span>
-          <span className="mt-0.5 block text-[0.6875rem] text-on-accent/70">Play. Earn XP.</span>
-        </Link>
-        <Link
-          href="/leaderboard"
-          className="rounded-[var(--radius-sticker)] border-2 border-ink bg-contrast p-4 shadow-[var(--shadow-sticker)] transition-transform duration-100 active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
-        >
-          <span aria-hidden className="text-[1.75rem] leading-none">👑</span>
-          <span className="display mt-2.5 block text-[1.125rem] text-on-contrast">Ranks</span>
-          <span className="mt-0.5 block text-[0.6875rem] text-on-contrast/60">Season 01</span>
-        </Link>
-      </section>
-
-      <section>
-        <Eyebrow className="mb-3 text-faint">Pick your arena</Eyebrow>
-        <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 no-scrollbar">
-          {CHALLENGE_FORMATS.map((format) => (
-            <Link
-              key={format.id}
-              href={`/create?format=${format.id}`}
-              className="group w-[9.75rem] shrink-0 rounded-[var(--radius-sticker)] border-2 border-line bg-panel p-4 transition-transform duration-150 active:scale-[0.96]"
-            >
-              <span aria-hidden className="text-[1.75rem] leading-none">
-                {format.icon}
-              </span>
-              <p className="display mt-3 text-[1rem]">{format.name}</p>
-              <p className="mt-1 text-[0.6875rem] leading-snug text-faint">{format.tagline}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <div className="mb-3 flex items-baseline justify-between">
-          <Eyebrow className="text-faint">Live matches</Eyebrow>
-          <Link href="/challenges" className="text-[0.75rem] font-bold text-accent-text">
-            See all
-          </Link>
-        </div>
-
-        <Sticker tone="panel" className="px-0 py-0">
-          <EmptyState
-            glyph="⚔️"
-            title="No matches yet"
-            body={
-              drafts.length > 0
-                ? `You have ${drafts.length} draft${drafts.length === 1 ? '' : 's'} waiting. Funding and invites arrive with escrow.`
-                : 'Set up your first challenge and it will show up here the moment escrow goes live.'
-            }
-            action={<ButtonLink href="/create">Create challenge</ButtonLink>}
-          />
-        </Sticker>
-      </section>
-
-      <div className="-mx-4 border-y-2 border-line bg-panel py-2.5 text-text">
-        <Marquee items={TICKER} />
-      </div>
-    </div>
-  );
-}
-
-function Hero({ connected, handle }: { connected: boolean; handle: string }) {
-  return (
-    <section className="relative overflow-hidden rounded-[var(--radius-sticker)] border-2 border-ink bg-panel px-5 pb-6 pt-7">
-      <Sunburst className="-right-16 -top-24 size-64 text-accent/[0.13]" />
-
-      <div className="relative">
-        <div className="flex items-center gap-2">
-          <Chip tone="accent" dot pulse>
-            {connected ? `Welcome back, ${handle}` : 'Ready when you are'}
-          </Chip>
-        </div>
-
-        <h1 className="display mt-4 text-[2.75rem]">
+    <div className="pt-1">
+      {/* Editorial masthead. No border, no shadow — the type carries it. */}
+      <header className="pb-6">
+        <p className="eyebrow text-faint">
+          {connected ? `Back again, ${handle}` : 'Peer to peer, skill only'}
+        </p>
+        <h1 className="display mt-3 text-[3rem] leading-[0.86]">
           Challenge.
           <br />
           Compete.
           <br />
           <span className="text-accent-text">Win.</span>
         </h1>
-
-        <p className="mt-3 max-w-[19rem] text-[0.9375rem] leading-relaxed text-muted">
+        <p className="mt-4 max-w-[20rem] text-[0.9375rem] leading-relaxed text-muted">
           Put up a stake, beat your opponent, take the pot. Decided by skill — never by chance.
         </p>
 
-        <div className="mt-5 flex items-center gap-3">
-          <ButtonLink href="/create" size="lg" className="flex-1">
-            + Create challenge
-          </ButtonLink>
-        </div>
+        <Link
+          href="/create"
+          className="mt-6 inline-flex min-h-13 w-full items-center justify-between rounded-full bg-ink pl-6 pr-2 text-on-contrast transition-transform duration-100 active:scale-[0.985]"
+        >
+          <span className="text-[0.9375rem] font-bold">Create a challenge</span>
+          <span className="flex size-10 items-center justify-center rounded-full bg-accent text-ink">
+            <SwordsIcon className="size-4.5" />
+          </span>
+        </Link>
+      </header>
+
+      {connected ? <BalanceRail /> : host === 'unavailable' ? <OpenInNimiqPay /> : <ConnectPanel />}
+
+      <div className="mt-6">
+        <DailyCheckIn />
       </div>
 
-      {/* A little personality, borrowed from arcade cabinet art. */}
-      <span
-        aria-hidden
-        className="absolute right-4 top-5 rotate-6 rounded-2xl border-2 border-ink bg-contrast px-2.5 py-1 text-[0.625rem] font-black uppercase tracking-wider text-on-contrast shadow-[var(--shadow-sticker-sm)] animate-[var(--animate-bob)]"
+      {/* Stats as a figure row divided by hairlines, not four bordered boxes. */}
+      <section className="mt-8 border-y border-ink/10">
+        <div className="grid grid-cols-4 divide-x divide-ink/10">
+          <Figure icon={<TrophyIcon className="size-3.5" />} label="Wins" value="0" />
+          <Figure icon={<FlameIcon className="size-3.5" />} label="Streak" value={String(progress.streak)} />
+          <Figure icon={<StarIcon className="size-3.5" />} label="XP" value={progress.xp.toLocaleString()} />
+          <Figure icon={<CrownIcon className="size-3.5" />} label="Rank" value="—" />
+        </div>
+      </section>
+      <Link
+        href="/leaderboard"
+        className="mt-2.5 flex items-center gap-2 py-1 text-[0.75rem] font-bold text-accent-text active:opacity-60"
       >
-        1v1?
+        Season 01 standings
+        <ChevronRightIcon className="size-3.5" />
+      </Link>
+      <p className="mt-1 text-[0.6875rem] leading-snug text-faint">
+        Streak and XP are yours and live. Wins and rank stay empty until challenges ship.
+      </p>
+
+      <Section title="Arcade" href="/arcade" action="All games">
+        <ul className="divide-y divide-ink/10">
+          {GAMES.map((game) => (
+            <li key={game.id}>
+              <Link href="/arcade" className="flex items-center gap-3.5 py-3.5 active:opacity-60">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-ink text-accent">
+                  <GameGlyph id={game.id} className="size-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[0.9375rem] font-bold tracking-tight">{game.name}</span>
+                  <span className="block truncate text-[0.75rem] text-faint">{game.tagline}</span>
+                </span>
+                <ChevronRightIcon className="size-4 shrink-0 text-faint" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Section>
+
+      <Section title="Arenas" href="/create" action="Set one up">
+        <div className="-mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 no-scrollbar">
+          {CHALLENGE_FORMATS.map((format) => (
+            <Link
+              key={format.id}
+              href={`/create?format=${format.id}`}
+              className="w-[8.75rem] shrink-0 rounded-2xl bg-panel-2 p-4 transition-transform duration-100 active:scale-[0.97]"
+            >
+              <span className="block text-[0.9375rem] font-black tracking-tight">{format.name}</span>
+              <span className="mt-1 block text-[0.6875rem] leading-snug text-faint">
+                {format.tagline}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Live matches" href="/challenges" action="See all">
+        <div className="rounded-2xl bg-panel-2 px-5 py-8 text-center">
+          <p className="text-[0.9375rem] font-bold">Nothing live yet</p>
+          <p className="mx-auto mt-1.5 max-w-[17rem] text-[0.8125rem] leading-relaxed text-muted">
+            {drafts.length > 0
+              ? `${drafts.length} draft${drafts.length === 1 ? '' : 's'} waiting. Funding and invites arrive with escrow.`
+              : 'Set up a challenge and it appears here the moment escrow ships.'}
+          </p>
+        </div>
+      </Section>
+
+      <div className="-mx-4 mt-9 border-y border-ink/10 py-2.5">
+        <Marquee items={TICKER} />
+      </div>
+    </div>
+  );
+}
+
+function Figure({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="px-1 py-3.5 text-center">
+      <span className="flex items-center justify-center gap-1 text-faint">
+        {icon}
+        <span className="text-[0.5625rem] font-bold uppercase tracking-[0.1em]">{label}</span>
       </span>
+      <p className="mt-1.5 text-[1.25rem] font-black leading-none tracking-[-0.03em] tabular">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  href,
+  action,
+  children,
+}: {
+  title: string;
+  href: string;
+  action: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="mt-8">
+      <div className="mb-1 flex items-baseline justify-between">
+        <h2 className="text-[1.125rem] font-black tracking-tight">{title}</h2>
+        <Link href={href} className="text-[0.75rem] font-bold text-accent-text">
+          {action}
+        </Link>
+      </div>
+      {children}
     </section>
   );
 }

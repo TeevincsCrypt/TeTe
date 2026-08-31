@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 
+import { FlameIcon } from '@/components/shell/icons';
 import { Chip } from '@/components/ui/Chip';
 import { cn } from '@/components/ui/cn';
 import { checkInReward } from '@/lib/arcade/progress';
@@ -25,28 +26,33 @@ export function DailyCheckIn() {
   return (
     <div
       className={cn(
-        'relative flex items-center gap-4 overflow-hidden rounded-[var(--radius-sticker)] border-2 p-4',
-        checkInAvailable ? 'border-ink bg-accent shadow-[var(--shadow-sticker)]' : 'border-ink/12 bg-panel',
+        'relative flex items-center gap-4 overflow-hidden rounded-2xl p-4',
+        checkInAvailable ? 'bg-ink' : 'bg-panel-2',
       )}
     >
       <span
         aria-hidden
         className={cn(
-          'flex size-12 shrink-0 items-center justify-center rounded-2xl border-2 border-ink text-[1.5rem]',
-          checkInAvailable ? 'bg-panel' : 'bg-panel-2',
+          'flex size-11 shrink-0 items-center justify-center rounded-xl',
+          checkInAvailable ? 'bg-accent text-ink' : 'bg-panel text-faint',
         )}
       >
-        🔥
+        <FlameIcon className="size-5" />
       </span>
 
       <div className="min-w-0 flex-1">
-        <p className={cn('display text-[1.125rem]', checkInAvailable && 'text-on-accent')}>
+        <p
+          className={cn(
+            'text-[1rem] font-black tracking-tight',
+            checkInAvailable && 'text-on-contrast',
+          )}
+        >
           {progress.streak > 0 ? `${progress.streak} day streak` : 'Start your streak'}
         </p>
         <p
           className={cn(
             'mt-0.5 text-[0.75rem] leading-snug',
-            checkInAvailable ? 'text-on-accent/70' : 'text-faint',
+            checkInAvailable ? 'text-on-contrast/60' : 'text-faint',
           )}
         >
           {checkInAvailable ? `Check in for +${nextReward} XP` : 'Checked in — come back tomorrow'}
@@ -57,7 +63,7 @@ export function DailyCheckIn() {
         <button
           type="button"
           onClick={() => setBurst(claim().gained)}
-          className="shrink-0 rounded-full border-2 border-ink bg-panel px-4 py-2.5 text-[0.8125rem] font-black shadow-[var(--shadow-sticker-sm)] transition-transform duration-100 active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
+          className="shrink-0 rounded-full bg-accent px-4 py-2.5 text-[0.8125rem] font-black text-ink transition-transform duration-100 active:scale-95"
         >
           Claim
         </button>

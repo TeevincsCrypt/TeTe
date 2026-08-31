@@ -29,8 +29,8 @@ export function TopBar() {
       <div
         className={cn(
           'mx-auto flex w-full max-w-md items-center justify-between gap-2',
-          'rounded-full border-2 border-ink bg-contrast py-2 pl-4 pr-2',
-          'shadow-[var(--shadow-sticker-sm)]',
+          'rounded-full bg-contrast py-2 pl-4 pr-2',
+          
         )}
       >
         <Link href="/" aria-label="TeTe home" className="flex items-center py-1">
@@ -40,7 +40,7 @@ export function TopBar() {
         {connected ? (
           <Link
             href="/profile"
-            className="flex min-h-10 items-center gap-2 rounded-full border-2 border-on-contrast/20 bg-contrast-2 py-1 pl-3 pr-1 transition-transform duration-150 active:scale-95"
+            className="flex min-h-10 items-center gap-2 rounded-full border border-on-contrast/15 bg-on-contrast/10 py-1 pl-3 pr-1 transition-transform duration-150 active:scale-95"
           >
             <span className="max-w-[6.5rem] truncate text-[0.8125rem] font-bold text-on-contrast">
               {handle}
@@ -48,7 +48,7 @@ export function TopBar() {
             <Avatar address={nimiq.address} size={30} />
           </Link>
         ) : (
-          <span className="flex min-h-10 items-center gap-1.5 rounded-full border-2 border-on-contrast/25 px-3 text-[0.75rem] font-bold text-on-contrast/70">
+          <span className="flex min-h-10 items-center gap-1.5 rounded-full border border-on-contrast/25 px-3 text-[0.75rem] font-bold text-on-contrast/70">
             <span className="size-1.5 rounded-full bg-on-contrast/50" />
             Not connected
           </span>

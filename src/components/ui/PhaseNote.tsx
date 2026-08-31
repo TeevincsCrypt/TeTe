@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 
+import { WrenchIcon } from '@/components/shell/icons';
+
 import { cn } from './cn';
 
 /**
@@ -20,11 +22,11 @@ export function PhaseNote({
   return (
     <div
       className={cn(
-        'flex items-start gap-2.5 rounded-2xl border-2 border-dashed border-line px-3.5 py-3',
+        'flex items-start gap-2.5 rounded-xl bg-panel-2 px-3.5 py-3',
         className,
       )}
     >
-      <span aria-hidden className="text-[0.875rem] leading-none">🛠</span>
+      <WrenchIcon className="mt-px size-3.5 shrink-0 text-faint" />
       <p className="text-[0.75rem] leading-snug text-faint">{children}</p>
     </div>
   );
