@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import Link from 'next/link';
 
@@ -14,6 +14,7 @@ import { StatTile } from '@/components/ui/StatTile';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { ConnectPanel } from '@/components/wallet/ConnectPanel';
 import { copyText } from '@/lib/clipboard';
+import { preparePhoto } from '@/lib/profile/local-profile';
 import { NIMIQ_NETWORK_LABEL } from '@/lib/config/env';
 import { chainLabel } from '@/lib/evm/chains';
 import { shortenEvmAddress } from '@/lib/evm/erc20';
@@ -35,7 +36,8 @@ import { useLocalProfile } from '@/state/use-local-profile';
  */
 export default function ProfilePage() {
   const { nimiq, evm, locale } = useMiniApp();
-  const { displayName, save, avatarSeed, saveAvatar } = useLocalProfile();
+  const { displayName, save, avatarSeed, saveAvatar, photo, savePhoto } = useLocalProfile();
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const { drafts } = useDrafts();
   const { players, remove: removePlayer } = useRoster();
 
@@ -78,11 +80,28 @@ export default function ProfilePage() {
     <div className="space-y-5 pt-2">
       <Sticker tone="contrast" className="rounded-3xl p-7 text-center">
         <div className="flex flex-col items-center">
-          <Avatar address={nimiq.address} size={78} seed={avatarSeed} />
+          <PhotoPicker
+            address={nimiq.address}
+            seed={avatarSeed}
+            photo={photo}
+            onPick={async (file) => {
+              setPhotoError(null);
+              try {
+                savePhoto(await preparePhoto(file));
+              } catch (cause: unknown) {
+                setPhotoError(cause instanceof Error ? cause.message : 'Could not use that image.');
+              }
+            }}
+            onClear={() => savePhoto(null)}
+          />
 
           {editing ? (
             <div className="mt-4 w-full">
+              <label htmlFor="display-name" className="sr-only">
+                Display name
+              </label>
               <input
+                id="display-name"
                 value={draftName}
                 onChange={(event) => setDraftName(event.target.value)}
                 maxLength={20}
@@ -124,6 +143,12 @@ export default function ProfilePage() {
             </>
           )}
 
+          {photoError && (
+            <p role="alert" className="mt-3 text-[0.75rem] font-semibold text-negative">
+              {photoError}
+            </p>
+          )}
+
           <Chip tone="inverse" className="mt-3">
             Unranked · Season 01
           </Chip>
@@ -135,7 +160,7 @@ export default function ProfilePage() {
         </div>
       </Sticker>
 
-      <section>
+      <section hidden={Boolean(photo)}>
         <Eyebrow className="mb-3 text-faint">Look</Eyebrow>
         <div className="flex flex-wrap items-center gap-2.5">
           {[null, 1, 2, 3, 4, 5, 6, 7].map((seed, index) => {
@@ -354,6 +379,71 @@ function Row({
     >
       <span className="text-[0.8125rem] text-muted">{label}</span>
       <span className="text-[0.8125rem] font-bold">{value}</span>
+    </div>
+  );
+}
+
+/**
+ * Profile picture.
+ *
+ * The chosen file is cropped square and re-encoded before it is stored, since a
+ * phone photo would otherwise blow the localStorage quota on its own. It never
+ * leaves the device — there is no upload endpoint, and a picture is not
+ * something TeTe needs a copy of.
+ */
+function PhotoPicker({
+  address,
+  seed,
+  photo,
+  onPick,
+  onClear,
+}: {
+  address: string | null;
+  seed: number | null;
+  photo: string | null;
+  onPick: (file: File) => void;
+  onClear: () => void;
+}) {
+  const input = useRef<HTMLInputElement | null>(null);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => input.current?.click()}
+        aria-label="Change profile picture"
+        className="relative block rounded-full transition-transform duration-150 active:scale-95"
+      >
+        <Avatar address={address} size={78} seed={seed} photo={photo} />
+        <span className="absolute -bottom-0.5 -right-0.5 flex size-7 items-center justify-center rounded-full border-2 border-contrast bg-accent text-on-accent">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="size-3.5" aria-hidden>
+            <path d="M4 8h3l2-3h6l2 3h3v11H4Z" strokeLinejoin="round" />
+            <circle cx="12" cy="13" r="3.2" />
+          </svg>
+        </span>
+      </button>
+
+      {photo && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="mt-2 block w-full text-[0.6875rem] font-bold text-on-contrast/55 underline underline-offset-2"
+        >
+          Remove photo
+        </button>
+      )}
+
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) onPick(file);
+          event.target.value = '';
+        }}
+      />
     </div>
   );
 }
