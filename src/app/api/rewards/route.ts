@@ -3,12 +3,31 @@ import { NextResponse } from 'next/server';
 import { GAMES, type GameId } from '@/lib/arcade/games';
 import { isNimiqAddressShape } from '@/lib/nimiq/address';
 import { hasDurableStore } from '@/lib/server/env';
-import { creditGameReward } from '@/lib/server/rewards';
+import { creditGameReward, rewardsBalanceKey } from '@/lib/server/rewards';
+import { get } from '@/lib/server/store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const GAME_IDS = new Set<string>(GAMES.map((game) => game.id));
+
+/**
+ * What this address has earned and not yet withdrawn. Public, like the
+ * balance of any address — and the number the wallet screen must show, since
+ * the device's own tally is only a local echo of it.
+ */
+export async function GET(request: Request) {
+  const address = new URL(request.url).searchParams.get('address') ?? '';
+  if (!isNimiqAddressShape(address)) {
+    return NextResponse.json({ error: 'A valid Nimiq address is required.' }, { status: 400 });
+  }
+  if (!hasDurableStore) {
+    return NextResponse.json({ error: 'Rewards are not configured on this deployment.' }, { status: 503 });
+  }
+
+  const balance = (await get<number>(rewardsBalanceKey(address))) ?? 0;
+  return NextResponse.json({ balance });
+}
 
 /**
  * Credit a finished arcade round to the player's withdrawable balance.

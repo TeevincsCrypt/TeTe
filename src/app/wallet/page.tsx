@@ -1,37 +1,58 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { ChevronLeftIcon, WalletIcon } from '@/components/shell/icons';
+import { WalletIcon } from '@/components/shell/icons';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { cn } from '@/components/ui/cn';
 import { PhaseNote } from '@/components/ui/PhaseNote';
 import { SlidingTabs } from '@/components/ui/SlidingTabs';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
-import { TREASURY_NIM_ADDRESS } from '@/lib/config/env';
+import { ApiError, fetchRewardBalance, fetchStatus, withdrawRewards } from '@/lib/api/client';
+import { EXPLORER_TX_URL } from '@/lib/config/env';
+import { copyText } from '@/lib/clipboard';
 import { pushNotice } from '@/lib/notifications/notifications';
-import { sendNim } from '@/lib/nimiq/provider';
-import { formatNim, LUNA_PER_NIM, nimToLuna } from '@/lib/nimiq/units';
+import { formatNim, LUNA_PER_NIM } from '@/lib/nimiq/units';
 import { PAYOUT_THRESHOLD_LUNA } from '@/lib/wallet/earnings';
 import { useEarnings } from '@/state/use-earnings';
 import { useMiniApp } from '@/state/mini-app-provider';
 
-type Tab = 'earnings' | 'deposit' | 'withdraw';
+type Tab = 'earnings' | 'withdraw';
 
 /**
- * Wallet: what the player holds, what they have earned, and moving funds.
+ * Wallet: what the player has earned, and taking it out.
  *
- * The two directions are not symmetrical, and the screen does not pretend they
- * are. A deposit is a real transaction the player signs in Nimiq Pay. A
- * withdrawal needs TeTe to send funds *to* a player, which a Mini App cannot do
- * — that needs a treasury key on a server — so the withdraw tab records a
- * request and says exactly what is missing instead of showing a fake success.
+ * There is no deposit tab. Money only ever enters TeTe for a reason — funding
+ * a challenge you have accepted — and that happens on the challenge itself,
+ * where the amount and the recipient are already known. A free-floating
+ * "send some NIM to the pool" screen was a way to lose money to no purpose.
+ *
+ * The headline figure is the server's, not this device's. Rewards are credited
+ * server-side as rounds are finished, so the local ledger below is a history
+ * of rounds played, not the balance of record.
  */
 export default function WalletPage() {
   const [tab, setTab] = useState<Tab>('earnings');
-  const { entries, totalLuna } = useEarnings();
+  const { entries } = useEarnings();
   const { nimiq, locale } = useMiniApp();
+  const address = nimiq.address;
+
+  const [balance, setBalance] = useState<number | null>(null);
+  const [ready, setReady] = useState<boolean | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!address) return;
+    const [status, earned] = await Promise.all([fetchStatus(), fetchRewardBalance(address)]);
+    setReady(status.escrow);
+    setBalance(earned);
+  }, [address]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const shown = balance ?? 0;
 
   return (
     <div className="pt-1">
@@ -40,10 +61,10 @@ export default function WalletPage() {
         <div className="mt-3 flex items-end justify-between gap-4">
           <div>
             <p className="text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-faint">
-              Unpaid rewards
+              Earned, not withdrawn
             </p>
             <p className="mt-1 text-[2.5rem] font-black leading-none tracking-[-0.035em] tabular">
-              {formatNim(totalLuna, { locale })}
+              {formatNim(shown, { locale })}
               <span className="ml-2 text-[1rem] text-faint">NIM</span>
             </p>
           </div>
@@ -51,9 +72,15 @@ export default function WalletPage() {
             <WalletIcon className="size-5" />
           </span>
         </div>
-        <Chip tone="warn" className="mt-3">
-          Not on chain · not yet payable
-        </Chip>
+        {balance === null ? (
+          <Chip tone="warn" className="mt-3">
+            {address ? 'Rewards not configured here' : 'Connect to see your balance'}
+          </Chip>
+        ) : (
+          <Chip tone={shown > 0 ? 'positive' : 'neutral'} className="mt-3">
+            Real balance · withdrawable from {PAYOUT_THRESHOLD_LUNA / LUNA_PER_NIM} NIM
+          </Chip>
+        )}
       </header>
 
       <SlidingTabs<Tab>
@@ -62,7 +89,6 @@ export default function WalletPage() {
         onChange={setTab}
         options={[
           { id: 'earnings', label: 'Earned' },
-          { id: 'deposit', label: 'Deposit' },
           { id: 'withdraw', label: 'Withdraw' },
         ]}
       />
@@ -98,74 +124,105 @@ export default function WalletPage() {
           )}
 
           <PhaseNote className="mt-4">
-            These are real amounts owed by the reward pool, recorded on this device —
-            not a balance you hold and not spendable. A Mini App can ask your wallet to
-            send funds but cannot send funds to you, so paying these out needs a funded
-            treasury signing from a server. That does not exist yet.
+            This list is the rounds played on this device. The balance above is the
+            server&apos;s record of what you have earned and not yet withdrawn — that is the
+            one that pays out.
           </PhaseNote>
         </section>
       )}
 
-      {tab === 'deposit' && <DepositPanel />}
-
       {tab === 'withdraw' && (
-        <WithdrawPanel totalLuna={totalLuna} address={nimiq.address} locale={locale} />
+        <WithdrawPanel
+          balance={balance}
+          ready={ready}
+          address={address}
+          locale={locale}
+          onDone={refresh}
+        />
       )}
     </div>
   );
 }
 
+type SendState =
+  | { status: 'idle' }
+  | { status: 'sending' }
+  | { status: 'sent'; sent: number; transaction: string }
+  | { status: 'error'; message: string };
+
 /**
- * A real send. Nimiq Pay raises its own confirmation and signs it; TeTe never
- * touches a key. With no treasury address configured this refuses outright —
- * a Nimiq transfer to a wrong address cannot be undone.
+ * A real payout. The server checks the signature, reads what it has credited,
+ * zeroes it, and sends from the treasury — the amount is never taken from
+ * this screen, because a client-supplied balance is a client-supplied
+ * withdrawal limit.
  */
-function DepositPanel() {
-  const { nimiq } = useMiniApp();
-  const [amount, setAmount] = useState('');
-  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-  const [message, setMessage] = useState<string | null>(null);
+function WithdrawPanel({
+  balance,
+  ready,
+  address,
+  locale,
+  onDone,
+}: {
+  balance: number | null;
+  ready: boolean | null;
+  address: string | null;
+  locale: string;
+  onDone: () => void;
+}) {
+  const [send, setSend] = useState<SendState>({ status: 'idle' });
+  const [copied, setCopied] = useState(false);
 
-  const value = Number.parseFloat(amount);
-  const valid = Number.isFinite(value) && value > 0;
-  const configured = Boolean(TREASURY_NIM_ADDRESS);
+  const total = balance ?? 0;
+  const enough = total >= PAYOUT_THRESHOLD_LUNA;
 
-  async function send() {
-    if (!valid || !TREASURY_NIM_ADDRESS) return;
-    setStatus('sending');
-    setMessage(null);
+  async function withdraw() {
+    if (!address) return;
+    setSend({ status: 'sending' });
     try {
-      await sendNim(TREASURY_NIM_ADDRESS, nimToLuna(value), 'TeTe deposit');
-      setStatus('sent');
-      pushNotice('system', 'Deposit sent', `${value} NIM sent to the TeTe pool.`);
+      const result = await withdrawRewards(address);
+      setSend({ status: 'sent', sent: result.sent, transaction: result.transaction });
+      pushNotice('reward', 'Withdrawal sent', `${formatNim(result.sent)} NIM is on its way.`);
+      onDone();
     } catch (cause: unknown) {
-      setStatus('error');
-      setMessage(cause instanceof Error ? cause.message : 'The transfer failed.');
+      setSend({
+        status: 'error',
+        message: cause instanceof ApiError ? cause.message : 'The payout failed.',
+      });
     }
   }
 
-  if (!configured) {
-    return (
-      <Sticker tone="panel" className="mt-5">
-        <p className="text-[0.9375rem] font-bold">Deposits are not configured</p>
-        <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
-          Set <code className="font-mono text-[0.75rem]">NEXT_PUBLIC_TREASURY_NIM_ADDRESS</code> to the
-          address deposits should go to. Until then this screen will not send, because a
-          Nimiq transfer to the wrong address cannot be reversed.
-        </p>
-      </Sticker>
-    );
-  }
-
-  if (status === 'sent') {
+  if (send.status === 'sent') {
+    const link = EXPLORER_TX_URL?.replace('{hash}', send.transaction);
     return (
       <Sticker tone="contrast" className="mt-5 rounded-3xl p-6 text-center">
-        <p className="text-[1.25rem] font-black">Deposit sent</p>
+        <p className="text-[1.5rem] font-black">{formatNim(send.sent, { locale })} NIM sent</p>
         <p className="mt-2 text-[0.8125rem] leading-relaxed text-on-contrast/70">
-          Nimiq Pay signed and broadcast it. It will confirm on chain shortly.
+          The treasury signed and broadcast it. It lands in your wallet once it confirms.
         </p>
-        <Button className="mt-5" onClick={() => { setStatus('idle'); setAmount(''); }}>
-          Send another
+        <div className="mt-4 flex items-center justify-center gap-2">
+          <p className="min-w-0 truncate font-mono text-[0.6875rem] text-on-contrast/60">
+            {send.transaction}
+          </p>
+          <button
+            type="button"
+            onClick={async () => setCopied(await copyText(send.transaction))}
+            className={cn('shrink-0 text-[0.6875rem] font-bold', copied ? 'text-positive' : 'text-accent')}
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+          {link && (
+            <a
+              href={link}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 text-[0.6875rem] font-bold text-accent"
+            >
+              View
+            </a>
+          )}
+        </div>
+        <Button className="mt-5" onClick={() => setSend({ status: 'idle' })}>
+          Done
         </Button>
       </Sticker>
     );
@@ -174,69 +231,11 @@ function DepositPanel() {
   return (
     <section className="mt-5 space-y-3">
       <Sticker tone="panel">
-        <label htmlFor="deposit" className="eyebrow text-faint">
-          Amount to deposit
-        </label>
-        <div className="mt-2 flex items-baseline gap-2">
-          <input
-            id="deposit"
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="any"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            placeholder="0"
-            className="w-full min-w-0 bg-transparent text-[2rem] font-black tracking-[-0.03em] text-text tabular placeholder:text-faint focus:outline-none"
-          />
-          <span className="shrink-0 text-[1rem] font-black text-faint">NIM</span>
-        </div>
-      </Sticker>
-
-      <Sticker tone="panel">
-        <Eyebrow className="text-faint">Going to</Eyebrow>
-        <p className="mt-2 break-all font-mono text-[0.75rem] leading-relaxed text-muted">
-          {TREASURY_NIM_ADDRESS}
-        </p>
-      </Sticker>
-
-      <Button onClick={send} disabled={!valid || !nimiq.address} loading={status === 'sending'} size="lg">
-        {nimiq.address ? 'Send deposit' : 'Connect your wallet first'}
-      </Button>
-
-      {status === 'error' && (
-        <p role="alert" className="text-[0.8125rem] leading-relaxed text-negative">
-          {message}
-        </p>
-      )}
-
-      <PhaseNote>
-        This is a real transaction. Nimiq Pay will ask you to approve it, and the
-        amount leaves your wallet once you do.
-      </PhaseNote>
-    </section>
-  );
-}
-
-function WithdrawPanel({
-  totalLuna,
-  address,
-  locale,
-}: {
-  totalLuna: number;
-  address: string | null;
-  locale: string;
-}) {
-  const enough = totalLuna >= PAYOUT_THRESHOLD_LUNA;
-
-  return (
-    <section className="mt-5 space-y-3">
-      <Sticker tone="panel">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <Eyebrow className="text-faint">Available to request</Eyebrow>
+            <Eyebrow className="text-faint">Available now</Eyebrow>
             <p className="mt-1.5 text-[1.75rem] font-black leading-none tabular">
-              {formatNim(totalLuna, { locale })}
+              {formatNim(total, { locale })}
               <span className="ml-1.5 text-[0.8125rem] text-faint">NIM</span>
             </p>
           </div>
@@ -247,8 +246,11 @@ function WithdrawPanel({
 
         <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-panel">
           <div
-            className={cn('h-full rounded-full transition-[width] duration-500', enough ? 'bg-positive' : 'bg-accent')}
-            style={{ width: `${Math.min(100, (totalLuna / PAYOUT_THRESHOLD_LUNA) * 100)}%` }}
+            className={cn(
+              'h-full rounded-full transition-[width] duration-500',
+              enough ? 'bg-positive' : 'bg-accent',
+            )}
+            style={{ width: `${Math.min(100, (total / PAYOUT_THRESHOLD_LUNA) * 100)}%` }}
           />
         </div>
       </Sticker>
@@ -260,15 +262,31 @@ function WithdrawPanel({
         </p>
       </Sticker>
 
-      <Button disabled size="lg">
-        Withdrawals not available yet
+      <Button
+        onClick={withdraw}
+        disabled={!address || !enough || ready === false}
+        loading={send.status === 'sending'}
+        size="lg"
+      >
+        {!address
+          ? 'Connect your wallet first'
+          : ready === false
+            ? 'Payouts not configured here'
+            : enough
+              ? `Withdraw ${formatNim(total, { locale })} NIM`
+              : `${formatNim(PAYOUT_THRESHOLD_LUNA - total, { locale })} NIM to go`}
       </Button>
 
+      {send.status === 'error' && (
+        <p role="alert" className="text-[0.8125rem] leading-relaxed text-negative">
+          {send.message}
+        </p>
+      )}
+
       <PhaseNote>
-        Withdrawal is the one direction a Mini App cannot do. TeTe can ask your wallet
-        to send funds, but nothing lets it send funds to you — that needs a treasury
-        wallet whose key signs payouts from a server. Your earned total is recorded and
-        will settle against exactly these entries once that exists.
+        Withdrawing asks Nimiq Pay to sign, proving the address is yours, and the
+        treasury sends the whole balance in one transaction. The minimum exists so a
+        payout is worth more than the transaction that carries it.
       </PhaseNote>
     </section>
   );

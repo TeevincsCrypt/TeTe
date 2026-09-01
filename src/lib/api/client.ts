@@ -181,6 +181,37 @@ export async function withdrawRewards(address: string) {
 }
 
 /**
+ * On-chain NIM balance, read through TeTe's server so the node's credentials
+ * never reach the browser. Null when this deployment has no node configured.
+ */
+export async function fetchChainBalance(address: string): Promise<number | null> {
+  try {
+    const response = await fetch(`/api/balance?address=${encodeURIComponent(address)}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { balance?: number };
+    return typeof body.balance === 'number' ? body.balance : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Earned-but-not-withdrawn rewards, as the server has them. */
+export async function fetchRewardBalance(address: string): Promise<number | null> {
+  try {
+    const response = await fetch(`/api/rewards?address=${encodeURIComponent(address)}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { balance?: number };
+    return typeof body.balance === 'number' ? body.balance : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Credit a finished arcade round. Unsigned on purpose — this fires the moment
  * a round ends, and signing would raise a wallet dialog after every game; the
  * signature that matters is on withdrawing, not on crediting. See the note on

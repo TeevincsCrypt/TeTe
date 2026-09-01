@@ -63,16 +63,6 @@ export const EVM_DEFAULT_CHAIN_ID = trimmed(process.env.NEXT_PUBLIC_EVM_DEFAULT_
 export const INTRO_VIDEO = trimmed(process.env.NEXT_PUBLIC_INTRO_VIDEO) ?? '/brand/intro.mp4';
 
 /**
- * Nimiq address that deposits are sent to.
- *
- * Unset by default and deliberately so: with no address configured the deposit
- * screen refuses to send rather than guessing a destination. Funds sent to a
- * wrong Nimiq address are not recoverable, so this is one place where a
- * fallback would be actively dangerous.
- */
-export const TREASURY_NIM_ADDRESS = trimmed(process.env.NEXT_PUBLIC_TREASURY_NIM_ADDRESS);
-
-/**
  * Optional block explorer URL template for a transaction, with `{hash}` as the
  * placeholder. Left unset by default rather than guessing a domain — TeTe still
  * shows the hash itself (with copy) either way.

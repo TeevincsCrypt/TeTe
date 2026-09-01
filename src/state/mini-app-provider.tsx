@@ -26,6 +26,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import { fetchChainBalance } from '@/lib/api/client';
 import { EVM_DEFAULT_CHAIN_ID, NIMIQ_RPC_URL } from '@/lib/config/env';
 import { findChain, normalizeChainId, usdtOn } from '@/lib/evm/chains';
 import { readTokenBalance, type TokenBalance } from '@/lib/evm/erc20';
@@ -236,15 +237,31 @@ export function MiniAppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  /**
+   * Read the player's NIM balance.
+   *
+   * Preference order matters. TeTe's own server is asked first, because a node
+   * behind credentials can only be read there — putting its URL in a
+   * `NEXT_PUBLIC_` variable would ship the login to every phone. Only if the
+   * deployment has published an open RPC endpoint does the browser talk to a
+   * node directly. With neither, the card says the balance is unavailable
+   * rather than inventing one.
+   */
   const loadNimiqBalance = useCallback(async (address: string) => {
+    setNimiq((prev) => ({ ...prev, balanceStatus: 'loading', balanceError: null }));
+
+    const viaServer = await fetchChainBalance(address);
+    if (!mounted.current) return;
+    if (viaServer !== null) {
+      setNimiq((prev) => ({ ...prev, balanceLuna: viaServer, balanceStatus: 'ready' }));
+      return;
+    }
+
     if (!NIMIQ_RPC_URL) {
-      // Not an error: the Mini App provider simply has no balance method, and
-      // this deployment has not configured an RPC endpoint to read one from.
       setNimiq((prev) => ({ ...prev, balanceStatus: 'unsupported', balanceLuna: null }));
       return;
     }
 
-    setNimiq((prev) => ({ ...prev, balanceStatus: 'loading', balanceError: null }));
     try {
       const account = await readAccount(address, NIMIQ_RPC_URL);
       if (!mounted.current) return;
