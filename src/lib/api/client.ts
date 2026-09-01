@@ -181,6 +181,20 @@ export async function withdrawRewards(address: string) {
 }
 
 /**
+ * Claim the reward for a finished arcade round. The server recomputes the
+ * payout from the score itself — see lib/server/rewards.ts for the caps that
+ * keep a fabricated score from being worth reporting.
+ */
+export async function claimGameReward(
+  address: string,
+  gameId: string,
+  score: number,
+): Promise<{ credited: number; balance: number }> {
+  const auth = await signIntent(address, 'reward');
+  return post<{ credited: number; balance: number }>('/api/rewards', { ...auth, gameId, score });
+}
+
+/**
  * What this deployment is configured to do.
  *
  * `store` and `escrow` are configured separately and fail separately: reading
