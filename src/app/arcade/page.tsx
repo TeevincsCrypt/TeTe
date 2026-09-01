@@ -32,9 +32,9 @@ export default function ArcadePage() {
   const { progress, record } = useProgress();
   const { totalLuna } = useEarnings();
   const [active, setActive] = useState<GameId | null>(null);
-  const [result, setResult] = useState<{ score: number; luna: number; record: boolean; at: number } | null>(
-    null,
-  );
+  const [result, setResult] = useState<
+    { score: number; coins: number; luna: number; record: boolean; at: number } | null
+  >(null);
 
   const [rewardsReady, setRewardsReady] = useState(false);
   useEffect(() => {
@@ -48,9 +48,9 @@ export default function ArcadePage() {
   }, []);
 
   function finish(id: GameId) {
-    return (score: number) => {
-      const outcome = record(id, score);
-      setResult({ score, luna: outcome.gained, record: outcome.record, at: Date.now() });
+    return (score: number, coins = 0) => {
+      const outcome = record(id, score, coins);
+      setResult({ score, coins, luna: outcome.gained, record: outcome.record, at: Date.now() });
     };
   }
 
@@ -163,7 +163,7 @@ export default function ArcadePage() {
 
       <PhaseNote className="mt-6">
         {rewardsReady
-          ? 'Claim a round after you finish it and it is credited to a real, withdrawable balance — capped per round and per day so a reported score cannot drain the pool.'
+          ? 'Every finished round is banked to your withdrawable balance automatically. Coins on the road are worth 1 NIM each, caltrops cost you one, and distance itself earns a trickle. Capped at 200 NIM a day per player.'
           : 'Rewards are recorded on this device and are not yet payable. TeTe can only ask your wallet to send funds, never send funds to you, so paying these out needs a server that is not configured on this deployment.'}
       </PhaseNote>
     </div>
@@ -171,7 +171,6 @@ export default function ArcadePage() {
 }
 
 type ClaimState =
-  | { status: 'idle' }
   | { status: 'claiming' }
   | { status: 'done'; credited: number }
   | { status: 'error'; message: string };
@@ -186,30 +185,37 @@ function ResultBar({
   onExit,
 }: {
   game: GameId;
-  result: { score: number; luna: number; record: boolean };
+  result: { score: number; coins: number; luna: number; record: boolean };
   address: string | null;
   canClaim: boolean;
   onDismiss: () => void;
   onExit: () => void;
 }) {
   const meta = gameById(game);
-  const [claim, setClaim] = useState<ClaimState>({ status: 'idle' });
+  const showClaim = Boolean(canClaim && address);
+  const [claim, setClaim] = useState<ClaimState>({ status: 'claiming' });
 
-  async function doClaim() {
-    if (!address) return;
-    setClaim({ status: 'claiming' });
-    try {
-      const { credited } = await claimGameReward(address, game, result.score);
-      setClaim({ status: 'done', credited });
-    } catch (cause: unknown) {
-      setClaim({
-        status: 'error',
-        message: cause instanceof ApiError ? cause.message : 'Could not claim that round.',
+  // Credited the moment the round ends — no button, because rewards should
+  // not need chasing. Safe to do on mount precisely because this call is not
+  // signed: nothing here raises a wallet dialog.
+  useEffect(() => {
+    if (!showClaim || !address) return;
+    let cancelled = false;
+    claimGameReward(address, game, result.score, result.coins)
+      .then(({ credited }) => {
+        if (!cancelled) setClaim({ status: 'done', credited });
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        setClaim({
+          status: 'error',
+          message: cause instanceof ApiError ? cause.message : 'Could not bank that round.',
+        });
       });
-    }
-  }
-
-  const showClaim = canClaim && address;
+    return () => {
+      cancelled = true;
+    };
+  }, [showClaim, address, game, result.score, result.coins]);
 
   return (
     <div className="mt-3 rounded-[1.25rem] bg-contrast p-4 text-on-contrast animate-[var(--animate-rise)]">
@@ -228,16 +234,32 @@ function ResultBar({
             <span className="ml-1 text-[0.8125rem] text-on-contrast/50">{meta.unit}</span>
           </p>
         </div>
-        <p className="shrink-0 text-[1rem] font-black text-accent tabular">
-          {claim.status === 'done'
-            ? `+${formatNim(claim.credited, { maximumFractionDigits: 3 })} NIM`
-            : `+${formatNim(result.luna, { maximumFractionDigits: 3 })} NIM`}
-        </p>
+        <div className="shrink-0 text-right">
+          {result.coins !== 0 && (
+            <p
+              className={cn(
+                'text-[0.75rem] font-bold tabular',
+                result.coins > 0 ? 'text-accent' : 'text-negative',
+              )}
+            >
+              {result.coins > 0 ? '+' : ''}
+              {result.coins} coin{Math.abs(result.coins) === 1 ? '' : 's'}
+            </p>
+          )}
+          <p className="text-[1rem] font-black text-accent tabular">
+            {showClaim && claim.status === 'done'
+              ? `+${formatNim(claim.credited, { maximumFractionDigits: 3 })} NIM`
+              : `+${formatNim(result.luna, { maximumFractionDigits: 3 })} NIM`}
+          </p>
+        </div>
       </div>
 
+      {showClaim && claim.status === 'claiming' && (
+        <p className="mt-3 text-[0.75rem] font-semibold text-on-contrast/55">Banking your round…</p>
+      )}
       {showClaim && claim.status === 'done' && (
         <p className="mt-3 text-[0.75rem] font-semibold text-accent">
-          Claimed — added to your withdrawable balance.
+          Added to your withdrawable balance.
         </p>
       )}
       {showClaim && claim.status === 'error' && (
@@ -249,21 +271,11 @@ function ResultBar({
         <p className="mt-3 text-[0.75rem] leading-relaxed text-on-contrast/55">
           {address
             ? 'Recorded on this device only — rewards are not configured on this deployment.'
-            : 'Recorded on this device only — connect your wallet to claim it for real.'}
+            : 'Recorded on this device only — connect your wallet to earn it for real.'}
         </p>
       )}
 
       <div className="mt-4 flex gap-2">
-        {showClaim && claim.status !== 'done' && (
-          <button
-            type="button"
-            onClick={doClaim}
-            disabled={claim.status === 'claiming'}
-            className="min-h-11 flex-1 rounded-full border border-accent text-[0.875rem] font-bold text-accent transition-transform duration-100 active:scale-[0.97] disabled:opacity-50"
-          >
-            {claim.status === 'claiming' ? 'Claiming…' : 'Claim'}
-          </button>
-        )}
         <button
           type="button"
           onClick={onDismiss}

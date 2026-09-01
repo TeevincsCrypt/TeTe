@@ -40,15 +40,22 @@ export interface Earning {
  * Nothing here is a promise of what any player will receive.
  */
 export const RATE_LUNA = {
-  /** 0.05 NIM per row crossed. */
-  crossing: 5_000,
-  /** 0.01 NIM per metre driven. */
-  drift: 1_000,
-  /** 0.04 NIM per target sliced. */
-  slice: 4_000,
+  /** 0.005 NIM per row crossed. */
+  crossing: 500,
+  /** 0.001 NIM per metre driven. */
+  drift: 100,
+  /** 0.004 NIM per target sliced. */
+  slice: 400,
   /** 1 NIM for the first day of a streak, scaling to 4. */
   streakDay: 100_000,
 } as const;
+
+/**
+ * A coin picked up mid-run. Worth far more than distance, on purpose: going
+ * for a coin costs a line, and that choice is where the reward should sit.
+ * Must match COIN_LUNA in lib/server/rewards.ts, which is authoritative.
+ */
+export const COIN_LUNA = 100_000;
 
 export function readEarnings(): Earning[] {
   if (typeof window === 'undefined') return [];

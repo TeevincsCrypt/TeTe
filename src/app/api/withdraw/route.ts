@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { verifySignedRequest } from '@/lib/server/auth';
 import { hasDurableStore, hasTreasury } from '@/lib/server/env';
+import { rewardsBalanceKey } from '@/lib/server/rewards';
 import { get, set } from '@/lib/server/store';
 import { payout } from '@/lib/server/treasury';
 
@@ -16,10 +17,11 @@ export const dynamic = 'force-dynamic';
  * reads what it has credited, pays that, and zeroes it. The client's local
  * ledger is a display copy, nothing more.
  *
- * Rewards are credited server-side as games are played; until that endpoint
- * exists a player's server balance is zero and this correctly pays nothing.
+ * Rewards are credited server-side as rounds are finished — see
+ * /api/rewards — against the same key this reads, imported rather than
+ * re-derived so the two can never disagree about whose balance is whose.
  */
-const balanceKey = (address: string) => `rewards:${address.replace(/\s+/g, '')}`;
+const balanceKey = rewardsBalanceKey;
 const MIN_LUNA = 25 * 100_000;
 
 export async function POST(request: Request) {
