@@ -1,39 +1,56 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { CrossingGame } from '@/components/arcade/CrossingGame';
 import { DriftGame } from '@/components/arcade/DriftGame';
 import { GameGlyph } from '@/components/arcade/GameGlyph';
 import { SliceGame } from '@/components/arcade/SliceGame';
 import { ChevronLeftIcon, ChevronRightIcon, CrownIcon } from '@/components/shell/icons';
-import { Button } from '@/components/ui/Button';
+import { ApiError, claimGameReward, fetchStatus } from '@/lib/api/client';
 import { cn } from '@/components/ui/cn';
 import { PhaseNote } from '@/components/ui/PhaseNote';
 import { GAMES, gameById, type GameId } from '@/lib/arcade/games';
 import { formatNim } from '@/lib/nimiq/units';
+import { useMiniApp } from '@/state/mini-app-provider';
 import { useEarnings } from '@/state/use-earnings';
 import { useProgress } from '@/state/use-progress';
 
 /**
  * The arcade.
  *
- * Rewards are recorded in NIM against the player's ledger, but they are
- * unpaid: a Mini App can ask a wallet to send funds and never send funds to a
- * player, so paying out needs a treasury signing from a server. The note at the
- * foot of the screen says so rather than implying money has already moved.
+ * A finished round is recorded locally either way — that is what personal
+ * bests and the streak are made of. Whether it is also real, withdrawable NIM
+ * depends on whether this deployment has a store to credit it to: when it
+ * does, claiming a round asks Nimiq Pay to sign, same as any other write, and
+ * the server (not the score reported here) decides how much that is worth.
+ * When it does not, the screen says so rather than implying money moved.
  */
 export default function ArcadePage() {
+  const { nimiq } = useMiniApp();
   const { progress, record } = useProgress();
   const { totalLuna } = useEarnings();
   const [active, setActive] = useState<GameId | null>(null);
-  const [result, setResult] = useState<{ score: number; luna: number; record: boolean } | null>(null);
+  const [result, setResult] = useState<{ score: number; luna: number; record: boolean; at: number } | null>(
+    null,
+  );
+
+  const [rewardsReady, setRewardsReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetchStatus().then((status) => {
+      if (!cancelled) setRewardsReady(status.store);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function finish(id: GameId) {
     return (score: number) => {
       const outcome = record(id, score);
-      setResult({ score, luna: outcome.gained, record: outcome.record });
+      setResult({ score, luna: outcome.gained, record: outcome.record, at: Date.now() });
     };
   }
 
@@ -68,8 +85,11 @@ export default function ArcadePage() {
 
         {result && (
           <ResultBar
+            key={result.at}
             game={active}
             result={result}
+            address={nimiq.address}
+            canClaim={rewardsReady}
             onDismiss={() => setResult(null)}
             onExit={() => {
               setActive(null);
@@ -142,27 +162,55 @@ export default function ArcadePage() {
       </ul>
 
       <PhaseNote className="mt-6">
-        Rewards are recorded on this device and are not yet payable. TeTe can only
-        ask your wallet to send funds, never send funds to you, so paying these out
-        needs a funded treasury that does not exist yet.
+        {rewardsReady
+          ? 'Claim a round after you finish it and it is credited to a real, withdrawable balance — capped per round and per day so a reported score cannot drain the pool.'
+          : 'Rewards are recorded on this device and are not yet payable. TeTe can only ask your wallet to send funds, never send funds to you, so paying these out needs a server that is not configured on this deployment.'}
       </PhaseNote>
     </div>
   );
 }
 
+type ClaimState =
+  | { status: 'idle' }
+  | { status: 'claiming' }
+  | { status: 'done'; credited: number }
+  | { status: 'error'; message: string };
+
 /** Result slides in under the board so the game stays on screen behind it. */
 function ResultBar({
   game,
   result,
+  address,
+  canClaim,
   onDismiss,
   onExit,
 }: {
   game: GameId;
   result: { score: number; luna: number; record: boolean };
+  address: string | null;
+  canClaim: boolean;
   onDismiss: () => void;
   onExit: () => void;
 }) {
   const meta = gameById(game);
+  const [claim, setClaim] = useState<ClaimState>({ status: 'idle' });
+
+  async function doClaim() {
+    if (!address) return;
+    setClaim({ status: 'claiming' });
+    try {
+      const { credited } = await claimGameReward(address, game, result.score);
+      setClaim({ status: 'done', credited });
+    } catch (cause: unknown) {
+      setClaim({
+        status: 'error',
+        message: cause instanceof ApiError ? cause.message : 'Could not claim that round.',
+      });
+    }
+  }
+
+  const showClaim = canClaim && address;
+
   return (
     <div className="mt-3 rounded-[1.25rem] bg-contrast p-4 text-on-contrast animate-[var(--animate-rise)]">
       <div className="flex items-center gap-3">
@@ -181,11 +229,41 @@ function ResultBar({
           </p>
         </div>
         <p className="shrink-0 text-[1rem] font-black text-accent tabular">
-          +{formatNim(result.luna, { maximumFractionDigits: 3 })} NIM
+          {claim.status === 'done'
+            ? `+${formatNim(claim.credited, { maximumFractionDigits: 3 })} NIM`
+            : `+${formatNim(result.luna, { maximumFractionDigits: 3 })} NIM`}
         </p>
       </div>
 
+      {showClaim && claim.status === 'done' && (
+        <p className="mt-3 text-[0.75rem] font-semibold text-accent">
+          Claimed — added to your withdrawable balance.
+        </p>
+      )}
+      {showClaim && claim.status === 'error' && (
+        <p role="alert" className="mt-3 text-[0.75rem] font-semibold text-negative">
+          {claim.message}
+        </p>
+      )}
+      {!showClaim && (
+        <p className="mt-3 text-[0.75rem] leading-relaxed text-on-contrast/55">
+          {address
+            ? 'Recorded on this device only — rewards are not configured on this deployment.'
+            : 'Recorded on this device only — connect your wallet to claim it for real.'}
+        </p>
+      )}
+
       <div className="mt-4 flex gap-2">
+        {showClaim && claim.status !== 'done' && (
+          <button
+            type="button"
+            onClick={doClaim}
+            disabled={claim.status === 'claiming'}
+            className="min-h-11 flex-1 rounded-full border border-accent text-[0.875rem] font-bold text-accent transition-transform duration-100 active:scale-[0.97] disabled:opacity-50"
+          >
+            {claim.status === 'claiming' ? 'Claiming…' : 'Claim'}
+          </button>
+        )}
         <button
           type="button"
           onClick={onDismiss}
