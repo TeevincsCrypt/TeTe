@@ -13,7 +13,7 @@ interface Pickup { lane: number; col: number; kind: 'coin' | 'hazard'; taken: bo
 interface State {
   row: number; col: number; over: boolean; scroll: number;
   lanes: { kind: 'road' | 'safe'; seed: number }[];
-  cars: Car[]; pickups: Pickup[]; coins: number; flash: number;
+  cars: Car[]; pickups: Pickup[]; coins: number; hazards: number; flash: number;
   hop: number; best: number; started: boolean;
 }
 
@@ -24,13 +24,18 @@ interface State {
  * speed range rather than adding cars, so the board never becomes an unreadable
  * wall and death always feels like a misread rather than a lottery.
  *
- * Coins and hazards sit on the lanes ahead: taking a coin is worth a NIM,
- * clipping a caltrop costs one. That turns the safe column into a real choice
- * rather than the obvious line, since the coin is rarely on it.
+ * Coins and hazards sit on the lanes ahead: taking a coin is worth a little
+ * NIM, clipping a caltrop costs more than a coin earns. That turns the safe
+ * column into a real choice rather than the obvious line, since the coin is
+ * rarely on it.
  */
-export function CrossingGame({ onFinish }: { onFinish: (score: number, coins: number) => void }) {
+export function CrossingGame({
+  onFinish,
+}: {
+  onFinish: (score: number, coins: number, hazards: number) => void;
+}) {
   const state = useRef<State>({
-    row: 0, col: 3, over: false, scroll: 0, lanes: [], cars: [], pickups: [], coins: 0, flash: 0,
+    row: 0, col: 3, over: false, scroll: 0, lanes: [], cars: [], pickups: [], coins: 0, hazards: 0, flash: 0,
     hop: 0, best: 0, started: false,
   });
   const done = useRef(false);
@@ -80,7 +85,7 @@ export function CrossingGame({ onFinish }: { onFinish: (score: number, coins: nu
 
   function reset() {
     state.current = {
-      row: 0, col: 3, over: false, scroll: 0, lanes: [], cars: [], pickups: [], coins: 0, flash: 0,
+      row: 0, col: 3, over: false, scroll: 0, lanes: [], cars: [], pickups: [], coins: 0, hazards: 0, flash: 0,
       hop: 0, best: state.current.best, started: true,
     };
     done.current = false;
@@ -111,7 +116,8 @@ export function CrossingGame({ onFinish }: { onFinish: (score: number, coins: nu
       const pickup = s.pickups.find((p) => !p.taken && p.lane === s.row && p.col === s.col);
       if (pickup) {
         pickup.taken = true;
-        s.coins += pickup.kind === 'coin' ? 1 : -1;
+        if (pickup.kind === 'coin') s.coins += 1;
+        else s.hazards += 1;
         s.flash = pickup.kind === 'coin' ? 1 : -1;
       }
     }
@@ -140,7 +146,7 @@ export function CrossingGame({ onFinish }: { onFinish: (score: number, coins: nu
           s.over = true;
           if (!done.current) {
             done.current = true;
-            onFinish(s.row, s.coins);
+            onFinish(s.row, s.coins, s.hazards);
           }
         }
       }
@@ -201,7 +207,7 @@ export function CrossingGame({ onFinish }: { onFinish: (score: number, coins: nu
     ctx.textAlign = 'left';
     ctx.font = '900 24px Archivo, system-ui, sans-serif';
     ctx.fillStyle = s.flash > 0.05 ? '#15803d' : s.flash < -0.05 ? '#b91c1c' : '#17120e';
-    ctx.fillText(String(s.coins), width - 56, 41);
+    ctx.fillText(String(s.coins - s.hazards), width - 56, 41);
 
     ctx.font = '700 11px Archivo, system-ui, sans-serif';
     ctx.fillStyle = 'rgba(23,18,14,0.5)';

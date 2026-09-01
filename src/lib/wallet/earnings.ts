@@ -51,11 +51,18 @@ export const RATE_LUNA = {
 } as const;
 
 /**
- * A coin picked up mid-run. Worth far more than distance, on purpose: going
- * for a coin costs a line, and that choice is where the reward should sit.
+ * A coin picked up mid-run. Worth more than distance, on purpose: going for a
+ * coin costs a line, and that choice is where the reward should sit.
  * Must match COIN_LUNA in lib/server/rewards.ts, which is authoritative.
  */
-export const COIN_LUNA = 100_000;
+export const COIN_LUNA = 20_000; // 0.2 NIM
+
+/**
+ * A hazard hit mid-run. Costs more than a coin earns, so a miss is never
+ * worth trading for a coin's reward. Must match HAZARD_LUNA in
+ * lib/server/rewards.ts, which is authoritative.
+ */
+export const HAZARD_LUNA = 50_000; // 0.5 NIM
 
 export function readEarnings(): Earning[] {
   if (typeof window === 'undefined') return [];

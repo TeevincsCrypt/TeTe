@@ -223,12 +223,14 @@ export async function claimGameReward(
   gameId: string,
   score: number,
   coins: number,
+  hazards = 0,
 ): Promise<{ credited: number; balance: number }> {
   return post<{ credited: number; balance: number }>('/api/rewards', {
     address,
     gameId,
     score,
     coins,
+    hazards,
   });
 }
 
