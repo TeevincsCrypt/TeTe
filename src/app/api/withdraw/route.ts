@@ -8,6 +8,10 @@ import { payout } from '@/lib/server/treasury';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// payout() now waits for on-chain confirmation before resolving — comfortably
+// under Vercel's default, but explicit so a platform-level timeout can never
+// cut it off mid-poll and leave the ledger and the chain disagreeing again.
+export const maxDuration = 30;
 
 /**
  * Pay out arcade rewards.

@@ -12,6 +12,10 @@ import { lookupAddress } from '@/lib/server/players';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// reportResult() settles by calling payout(), which now waits for on-chain
+// confirmation before resolving — give it the same headroom as /api/withdraw
+// so a platform timeout can never cut a settlement off mid-poll.
+export const maxDuration = 30;
 
 type Params = { params: Promise<{ id: string }> };
 

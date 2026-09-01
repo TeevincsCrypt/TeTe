@@ -80,7 +80,33 @@ export async function findFunding(
 }
 
 /**
- * Send from the treasury. Returns the transaction hash.
+ * Wait for a sent transaction to actually land, rather than trusting the hash
+ * the send returned.
+ *
+ * A hash back from `sendBasicTransactionWithData` proves the node accepted the
+ * transaction syntactically — not that it was ever included in a block. A
+ * transaction with an expired validity window is accepted the same way and
+ * then silently dropped, which is exactly what happened here before the fix
+ * above: the caller saw a hash and reported success while no NIM ever moved.
+ * So a payout is not treated as real until it is found on chain.
+ */
+async function waitForOnChain(hash: string, address: string): Promise<void> {
+  const attempts = 10;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const transactions = await transactionsFor(address, 20);
+    const found = transactions.find((tx) => tx.hash === hash);
+    if (found && (found.confirmations ?? 0) >= 1) return;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  throw new TreasuryError(
+    'The payout was submitted but never confirmed on chain. Nothing was recorded as sent.',
+  );
+}
+
+/**
+ * Send from the treasury. Resolves only once the transaction is confirmed on
+ * chain — not merely accepted by the node — so a caller can trust that
+ * resolving means the NIM actually moved.
  *
  * The wallet is unlocked for a few seconds only — long enough for this send,
  * short enough that an idle node is not left able to spend.
@@ -96,12 +122,21 @@ export async function payout(recipient: string, luna: number, memo: string): Pro
   }
 
   await rpc('unlockAccount', [TREASURY_ADDRESS, TREASURY_PASSPHRASE, 10]);
-  return rpc<string>('sendBasicTransactionWithData', [
+  const hash = await rpc<string>('sendBasicTransactionWithData', [
     TREASURY_ADDRESS,
     recipient,
     Buffer.from(memo, 'utf8').toString('hex'),
     luna,
     0,
-    0,
+    // A plain number here deserializes as ValidityStartHeight::Absolute(n) —
+    // literally block n. Passing 0 built a transaction whose validity window
+    // was block 0, expired by tens of millions of blocks on a live chain, so
+    // it was accepted into the mempool and then dropped. A string prefixed
+    // with "+" deserializes as Relative(n): "n blocks from now", which for
+    // n=0 is exactly "start the window at the current block" — the only
+    // value that is ever correct for a payout sent in real time.
+    '+0',
   ]);
+  await waitForOnChain(hash, TREASURY_ADDRESS as string);
+  return hash;
 }
