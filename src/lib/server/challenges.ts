@@ -43,7 +43,15 @@ export async function createChallenge(input: Omit<Challenge, 'state' | 'updatedA
   };
   await save(challenge);
   await push(playerList(challenge.host.address), challenge.id);
-  if (!challenge.guest) await push(OPEN_LIST, challenge.id);
+  if (challenge.guest) {
+    // A challenge aimed at somebody has to reach them. Indexing it under the
+    // guest at creation — not only once they accept — is what puts it in front
+    // of the player it names; without this the only route to it is a link the
+    // host sends by hand, and being called out in the app does nothing at all.
+    await push(playerList(challenge.guest.address), challenge.id);
+  } else {
+    await push(OPEN_LIST, challenge.id);
+  }
   return challenge;
 }
 
