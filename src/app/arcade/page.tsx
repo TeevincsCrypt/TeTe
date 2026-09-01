@@ -33,7 +33,8 @@ export default function ArcadePage() {
   const { totalLuna } = useEarnings();
   const [active, setActive] = useState<GameId | null>(null);
   const [result, setResult] = useState<
-    { score: number; coins: number; luna: number; record: boolean; at: number } | null
+    | { score: number; coins: number; hazards: number; luna: number; record: boolean; at: number }
+    | null
   >(null);
 
   const [rewardsReady, setRewardsReady] = useState(false);
@@ -48,9 +49,9 @@ export default function ArcadePage() {
   }, []);
 
   function finish(id: GameId) {
-    return (score: number, coins = 0) => {
-      const outcome = record(id, score, coins);
-      setResult({ score, coins, luna: outcome.gained, record: outcome.record, at: Date.now() });
+    return (score: number, coins = 0, hazards = 0) => {
+      const outcome = record(id, score, coins, hazards);
+      setResult({ score, coins, hazards, luna: outcome.gained, record: outcome.record, at: Date.now() });
     };
   }
 
@@ -185,7 +186,7 @@ function ResultBar({
   onExit,
 }: {
   game: GameId;
-  result: { score: number; coins: number; luna: number; record: boolean };
+  result: { score: number; coins: number; hazards: number; luna: number; record: boolean };
   address: string | null;
   canClaim: boolean;
   onDismiss: () => void;
@@ -201,7 +202,7 @@ function ResultBar({
   useEffect(() => {
     if (!showClaim || !address) return;
     let cancelled = false;
-    claimGameReward(address, game, result.score, result.coins)
+    claimGameReward(address, game, result.score, result.coins, result.hazards)
       .then(({ credited }) => {
         if (!cancelled) setClaim({ status: 'done', credited });
       })
@@ -215,7 +216,7 @@ function ResultBar({
     return () => {
       cancelled = true;
     };
-  }, [showClaim, address, game, result.score, result.coins]);
+  }, [showClaim, address, game, result.score, result.coins, result.hazards]);
 
   return (
     <div className="mt-3 rounded-[1.25rem] bg-contrast p-4 text-on-contrast animate-[var(--animate-rise)]">
@@ -235,17 +236,21 @@ function ResultBar({
           </p>
         </div>
         <div className="shrink-0 text-right">
-          {result.coins !== 0 && (
-            <p
-              className={cn(
-                'text-[0.75rem] font-bold tabular',
-                result.coins > 0 ? 'text-accent' : 'text-negative',
-              )}
-            >
-              {result.coins > 0 ? '+' : ''}
-              {result.coins} coin{Math.abs(result.coins) === 1 ? '' : 's'}
-            </p>
-          )}
+          {(() => {
+            const net = result.coins - result.hazards;
+            if (net === 0) return null;
+            return (
+              <p
+                className={cn(
+                  'text-[0.75rem] font-bold tabular',
+                  net > 0 ? 'text-accent' : 'text-negative',
+                )}
+              >
+                {net > 0 ? '+' : ''}
+                {net} coin{Math.abs(net) === 1 ? '' : 's'}
+              </p>
+            );
+          })()}
           <p className="text-[1rem] font-black text-accent tabular">
             {showClaim && claim.status === 'done'
               ? `+${formatNim(claim.credited, { maximumFractionDigits: 3 })} NIM`

@@ -77,6 +77,7 @@ export async function POST(request: Request) {
     gameId as GameId,
     Number(body.score),
     Number(body.coins ?? 0),
+    Number(body.hazards ?? 0),
   );
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 409 });
 

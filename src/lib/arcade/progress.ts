@@ -6,7 +6,7 @@
  * funds, never send funds to a player, so paying out needs a treasury key
  * signing from a server. This file only tracks streaks and personal bests.
  */
-import { addEarning, COIN_LUNA, RATE_LUNA } from '@/lib/wallet/earnings';
+import { addEarning, COIN_LUNA, HAZARD_LUNA, RATE_LUNA } from '@/lib/wallet/earnings';
 
 import type { GameId } from './games';
 import { gameById, isBetter } from './games';
@@ -83,14 +83,16 @@ export function claimCheckIn(): { progress: Progress; gained: number; streak: nu
 /**
  * Record a finished game. Returns what it earned and whether it beat the best.
  *
- * `coins` is the net pickups from that run — hazards subtract. This mirrors
- * what the server credits so the figure on screen matches, but the server's
- * own calculation is the one that counts.
+ * `coins` and `hazards` are the raw pickup and hit counts from that run, each
+ * worth a different amount. This mirrors what the server credits so the
+ * figure on screen matches, but the server's own calculation is the one that
+ * counts.
  */
 export function recordGame(
   id: GameId,
   score: number,
   coins = 0,
+  hazards = 0,
 ): { progress: Progress; gained: number; record: boolean } {
   const current = readProgress();
   const record = isBetter(id, score, current.best[id]);
@@ -100,7 +102,7 @@ export function recordGame(
     best: record ? { ...current.best, [id]: score } : current.best,
   };
   write(next);
-  const gained = Math.max(0, Math.round(score * RATE_LUNA[id]) + coins * COIN_LUNA);
+  const gained = Math.max(0, Math.round(score * RATE_LUNA[id]) + coins * COIN_LUNA - hazards * HAZARD_LUNA);
   addEarning('game', `${gameById(id).name} — ${score}`, gained);
   return { progress: next, gained, record };
 }

@@ -8,10 +8,10 @@ import { get, set } from './store';
 /**
  * Crediting real, withdrawable NIM for arcade play.
  *
- * A client reports a game, a score and a net coin count, and nothing here
- * re-plays the round to verify any of it — that would mean re-implementing
- * three games' physics server-side to referee them, which is out of scope for
- * casual arcade games.
+ * A client reports a game, a score, coins collected and hazards hit, and
+ * nothing here re-plays the round to verify any of it — that would mean
+ * re-implementing three games' physics server-side to referee them, which is
+ * out of scope for casual arcade games.
  *
  * So this does not pretend to referee fairness. What it does is bound what a
  * fabricated report is worth:
@@ -32,8 +32,10 @@ const RATE_LUNA: Record<GameId, number> = {
   slice: 400, // 0.004 NIM per target
 };
 
-/** Each net coin picked up in Crossing or Drift. Hazards subtract one. */
-const COIN_LUNA = 100_000; // 1 NIM
+/** Each coin picked up in Crossing or Drift. */
+const COIN_LUNA = 20_000; // 0.2 NIM
+/** Each hazard hit in Crossing or Drift. Costs more than a coin earns. */
+const HAZARD_LUNA = 50_000; // 0.5 NIM
 
 /**
  * Sanity ceilings, not skill ceilings — set far past any real run so a
@@ -75,12 +77,16 @@ export async function creditGameReward(
   gameId: GameId,
   score: number,
   coins: number,
+  hazards = 0,
 ): Promise<RewardResult> {
   if (!Number.isInteger(score) || score < 0 || score > MAX_SCORE[gameId]) {
     return { ok: false, error: 'That score is not a real run.' };
   }
-  if (!Number.isInteger(coins) || Math.abs(coins) > MAX_COINS) {
+  if (!Number.isInteger(coins) || coins < 0 || coins > MAX_COINS) {
     return { ok: false, error: 'That coin count is not a real run.' };
+  }
+  if (!Number.isInteger(hazards) || hazards < 0 || hazards > MAX_COINS) {
+    return { ok: false, error: 'That hazard count is not a real run.' };
   }
 
   const last = (await get<number>(lastKey(address))) ?? 0;
@@ -96,7 +102,7 @@ export async function creditGameReward(
 
   // Hazards can take a round below zero; that costs the round, never the
   // balance already earned.
-  const earned = Math.max(0, Math.round(score * RATE_LUNA[gameId]) + coins * COIN_LUNA);
+  const earned = Math.max(0, Math.round(score * RATE_LUNA[gameId]) + coins * COIN_LUNA - hazards * HAZARD_LUNA);
   const credited = Math.min(earned, MAX_DAILY_LUNA - day.luna);
 
   const current = (await get<number>(rewardsBalanceKey(address))) ?? 0;

@@ -29,8 +29,16 @@ export const KV_TOKEN = req('KV_REST_API_TOKEN');
 /** Payouts are refused above this, so a bug cannot drain the treasury. */
 export const MAX_PAYOUT_LUNA = Number(req('NIMIQ_MAX_PAYOUT_LUNA') ?? 500_000_00);
 
+/**
+ * Bearer token for manual reward-ledger corrections (/api/admin/credit).
+ * As sensitive as the treasury passphrase: it cannot move real NIM by itself,
+ * but it can inflate a balance that a later withdrawal will honor.
+ */
+export const ADMIN_TOKEN = req('NIMIQ_ADMIN_TOKEN');
+
 export const hasTreasury = Boolean(RPC_URL && TREASURY_ADDRESS && TREASURY_PASSPHRASE);
 export const hasDurableStore = Boolean(KV_URL && KV_TOKEN);
+export const hasAdmin = Boolean(ADMIN_TOKEN && hasDurableStore);
 /**
  * A node to read the chain with. Enough to look up a balance, which is why it
  * is separate from `hasTreasury` — reading needs no wallet and no passphrase.

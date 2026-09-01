@@ -37,8 +37,8 @@ export function useProgress() {
     return result;
   }, []);
 
-  const record = useCallback((id: GameId, score: number, coins = 0) => {
-    const result = recordGame(id, score, coins);
+  const record = useCallback((id: GameId, score: number, coins = 0, hazards = 0) => {
+    const result = recordGame(id, score, coins, hazards);
     setProgress(result.progress);
     return result;
   }, []);

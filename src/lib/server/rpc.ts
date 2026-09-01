@@ -46,9 +46,16 @@ export interface RpcTransaction {
   confirmations?: number;
 }
 
-/** Recent transactions involving an address, newest first. */
+/**
+ * Recent transactions involving an address, newest first.
+ *
+ * The node's dispatcher takes exactly three positional params — address,
+ * max, and a start-at hash to page backwards from. Omitting the third
+ * doesn't make it optional; it fails to deserialize at all ("invalid length
+ * 2, expected ... with 3 elements"). `null` means "start from the tip."
+ */
 export function transactionsFor(address: string, max = 100): Promise<RpcTransaction[]> {
-  return rpc<RpcTransaction[]>('getTransactionsByAddress', [address, max]);
+  return rpc<RpcTransaction[]>('getTransactionsByAddress', [address, max, null]);
 }
 
 export function accountBalance(address: string): Promise<number> {

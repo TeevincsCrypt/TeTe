@@ -10,7 +10,7 @@ interface Pickup { x: number; y: number; kind: 'coin' | 'hazard' }
 interface State {
   x: number; vx: number; dist: number; over: boolean; started: boolean;
   road: Slice[]; phase: number; curve: number; scroll: number;
-  pickups: Pickup[]; coins: number; flash: number; nextDrop: number;
+  pickups: Pickup[]; coins: number; hazards: number; flash: number; nextDrop: number;
 }
 
 const STEP = 12;
@@ -26,10 +26,14 @@ const STEP = 12;
  * button, reaching a coin on the far side means committing early — the cost of
  * a coin is the line you give up to take it.
  */
-export function DriftGame({ onFinish }: { onFinish: (score: number, coins: number) => void }) {
+export function DriftGame({
+  onFinish,
+}: {
+  onFinish: (score: number, coins: number, hazards: number) => void;
+}) {
   const state = useRef<State>({
     x: 0.5, vx: 0, dist: 0, over: false, started: false, road: [], phase: 0, curve: 0, scroll: 0,
-    pickups: [], coins: 0, flash: 0, nextDrop: 0,
+    pickups: [], coins: 0, hazards: 0, flash: 0, nextDrop: 0,
   });
   const done = useRef(false);
 
@@ -41,7 +45,7 @@ export function DriftGame({ onFinish }: { onFinish: (score: number, coins: numbe
     state.current = {
       x: width / 2, vx: 0, dist: 0, over: false, started: true,
       road, phase: 0, curve: 0, scroll: 0,
-      pickups: [], coins: 0, flash: 0, nextDrop: 22,
+      pickups: [], coins: 0, hazards: 0, flash: 0, nextDrop: 22,
     };
     done.current = false;
   }
@@ -89,7 +93,8 @@ export function DriftGame({ onFinish }: { onFinish: (score: number, coins: numbe
       for (const pickup of s.pickups) pickup.y += speed * dt;
       s.pickups = s.pickups.filter((pickup) => {
         if (Math.abs(pickup.y - carY) < 20 && Math.abs(pickup.x - s.x) < 22) {
-          s.coins += pickup.kind === 'coin' ? 1 : -1;
+          if (pickup.kind === 'coin') s.coins += 1;
+          else s.hazards += 1;
           s.flash = pickup.kind === 'coin' ? 1 : -1;
           return false;
         }
@@ -118,14 +123,14 @@ export function DriftGame({ onFinish }: { onFinish: (score: number, coins: numbe
         s.over = true;
         if (!done.current) {
           done.current = true;
-          onFinish(Math.floor(s.dist), s.coins);
+          onFinish(Math.floor(s.dist), s.coins, s.hazards);
         }
       }
       if (s.x < 0 || s.x > width) {
         s.over = true;
         if (!done.current) {
           done.current = true;
-          onFinish(Math.floor(s.dist), s.coins);
+          onFinish(Math.floor(s.dist), s.coins, s.hazards);
         }
       }
     }
@@ -177,7 +182,7 @@ export function DriftGame({ onFinish }: { onFinish: (score: number, coins: numbe
     ctx.textAlign = 'left';
     ctx.font = '900 24px Archivo, system-ui, sans-serif';
     ctx.fillStyle = s.flash > 0.05 ? '#15803d' : s.flash < -0.05 ? '#b91c1c' : '#17120e';
-    ctx.fillText(String(s.coins), width - 56, 41);
+    ctx.fillText(String(s.coins - s.hazards), width - 56, 41);
 
     ctx.font = '700 11px Archivo, system-ui, sans-serif';
     ctx.fillStyle = 'rgba(23,18,14,0.5)';
