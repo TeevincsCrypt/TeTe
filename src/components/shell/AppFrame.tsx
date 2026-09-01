@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { defaultHandle } from '@/lib/profile/local-profile';
+import { useChallengeAlerts } from '@/state/use-challenge-alerts';
 import { useMiniApp } from '@/state/mini-app-provider';
 import { useLocalProfile } from '@/state/use-local-profile';
 
@@ -23,6 +24,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { nimiq } = useMiniApp();
   const { displayName } = useLocalProfile();
+  useChallengeAlerts(nimiq.address);
 
   // The intro plays on the transition into a connected session, once. Tracking
   // the previous address means a route change or a re-render never replays it.
