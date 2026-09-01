@@ -45,7 +45,12 @@ export default function ChallengesPage() {
     }
   }, [backend]);
 
-  const activeMine = mine.filter((c) => LIVE_STATES.includes(c.state) && c.state !== 'open');
+  // Open ones belong here too: a challenge you posted and are waiting on, or one
+  // aimed at you that you have not accepted yet, is exactly what "Mine" is for.
+  // Excluding them meant posting a challenge made it disappear from your own
+  // view until somebody else acted on it. The board never double-shows these —
+  // it already filters out anything you are a party to.
+  const activeMine = mine.filter((c) => LIVE_STATES.includes(c.state));
   const doneMine = mine.filter((c) => TERMINAL_STATES.includes(c.state));
 
   return (
