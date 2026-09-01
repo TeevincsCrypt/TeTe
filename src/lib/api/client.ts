@@ -181,17 +181,24 @@ export async function withdrawRewards(address: string) {
 }
 
 /**
- * Claim the reward for a finished arcade round. The server recomputes the
- * payout from the score itself — see lib/server/rewards.ts for the caps that
- * keep a fabricated score from being worth reporting.
+ * Credit a finished arcade round. Unsigned on purpose — this fires the moment
+ * a round ends, and signing would raise a wallet dialog after every game; the
+ * signature that matters is on withdrawing, not on crediting. See the note on
+ * /api/rewards. The server recomputes the payout itself from the score and
+ * coins, within the caps in lib/server/rewards.ts.
  */
 export async function claimGameReward(
   address: string,
   gameId: string,
   score: number,
+  coins: number,
 ): Promise<{ credited: number; balance: number }> {
-  const auth = await signIntent(address, 'reward');
-  return post<{ credited: number; balance: number }>('/api/rewards', { ...auth, gameId, score });
+  return post<{ credited: number; balance: number }>('/api/rewards', {
+    address,
+    gameId,
+    score,
+    coins,
+  });
 }
 
 /**

@@ -3,16 +3,18 @@
 import { useRef } from 'react';
 
 import { GameCanvas, type Frame } from './GameCanvas';
-import { drawCar, drawRunner, drawTrain } from './sprites';
+import { drawCar, drawCoin, drawHazard, drawRunner, drawTrain } from './sprites';
 
 const LANE = 46;
 const COLS = 7;
 
 interface Car { lane: number; x: number; speed: number; w: number; kind: 'car' | 'train'; body: string }
+interface Pickup { lane: number; col: number; kind: 'coin' | 'hazard'; taken: boolean }
 interface State {
   row: number; col: number; over: boolean; scroll: number;
   lanes: { kind: 'road' | 'safe'; seed: number }[];
-  cars: Car[]; hop: number; best: number; started: boolean;
+  cars: Car[]; pickups: Pickup[]; coins: number; flash: number;
+  hop: number; best: number; started: boolean;
 }
 
 /**
@@ -21,10 +23,15 @@ interface State {
  * An original game in the road-crossing genre. Difficulty ramps by widening the
  * speed range rather than adding cars, so the board never becomes an unreadable
  * wall and death always feels like a misread rather than a lottery.
+ *
+ * Coins and hazards sit on the lanes ahead: taking a coin is worth a NIM,
+ * clipping a caltrop costs one. That turns the safe column into a real choice
+ * rather than the obvious line, since the coin is rarely on it.
  */
-export function CrossingGame({ onFinish }: { onFinish: (score: number) => void }) {
+export function CrossingGame({ onFinish }: { onFinish: (score: number, coins: number) => void }) {
   const state = useRef<State>({
-    row: 0, col: 3, over: false, scroll: 0, lanes: [], cars: [], hop: 0, best: 0, started: false,
+    row: 0, col: 3, over: false, scroll: 0, lanes: [], cars: [], pickups: [], coins: 0, flash: 0,
+    hop: 0, best: 0, started: false,
   });
   const done = useRef(false);
 
@@ -54,13 +61,27 @@ export function CrossingGame({ onFinish }: { onFinish: (score: number) => void }
           });
         }
       }
+
+      // Coins and hazards start past the opening safe rows, so the first hop
+      // is never a coin toss. A lane carries at most one of either.
+      if (index > 1) {
+        const roll = Math.random();
+        if (roll < 0.34) {
+          s.pickups.push({
+            lane: index,
+            col: Math.floor(Math.random() * COLS),
+            kind: roll < 0.22 ? 'coin' : 'hazard',
+            taken: false,
+          });
+        }
+      }
     }
   }
 
   function reset() {
     state.current = {
-      row: 0, col: 3, over: false, scroll: 0, lanes: [], cars: [], hop: 0,
-      best: state.current.best, started: true,
+      row: 0, col: 3, over: false, scroll: 0, lanes: [], cars: [], pickups: [], coins: 0, flash: 0,
+      hop: 0, best: state.current.best, started: true,
     };
     done.current = false;
     ensureLanes(0);
@@ -85,7 +106,16 @@ export function CrossingGame({ onFinish }: { onFinish: (score: number) => void }
         s.best = Math.max(s.best, s.row);
         ensureLanes(s.row);
       }
+
+      // Landing square decides the pickup, whichever way the player moved.
+      const pickup = s.pickups.find((p) => !p.taken && p.lane === s.row && p.col === s.col);
+      if (pickup) {
+        pickup.taken = true;
+        s.coins += pickup.kind === 'coin' ? 1 : -1;
+        s.flash = pickup.kind === 'coin' ? 1 : -1;
+      }
     }
+    s.flash *= Math.max(0, 1 - dt * 2.2);
     if (pointer.pressed && s.over && done.current) {
       reset();
       return;
@@ -110,7 +140,7 @@ export function CrossingGame({ onFinish }: { onFinish: (score: number) => void }
           s.over = true;
           if (!done.current) {
             done.current = true;
-            onFinish(s.row);
+            onFinish(s.row, s.coins);
           }
         }
       }
@@ -140,6 +170,16 @@ export function CrossingGame({ onFinish }: { onFinish: (score: number) => void }
       }
     }
 
+    // Pickups sit under the traffic, so a car never hides behind a coin.
+    for (const pickup of s.pickups) {
+      if (pickup.taken) continue;
+      const y = baseY - (pickup.lane * LANE - s.scroll) - LANE / 2;
+      if (y < -LANE || y > height + LANE) continue;
+      const x = ox + pickup.col * LANE + LANE / 2;
+      if (pickup.kind === 'coin') drawCoin(ctx, x, y, 13, performance.now() / 260 + pickup.lane);
+      else drawHazard(ctx, x, y, 13);
+    }
+
     for (const car of s.cars) {
       const y = baseY - (car.lane * LANE - s.scroll) - LANE / 2;
       if (y < -LANE || y > height + LANE) continue;
@@ -155,6 +195,13 @@ export function CrossingGame({ onFinish }: { onFinish: (score: number) => void }
     ctx.font = '900 34px Archivo, system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText(String(s.row), 16, 42);
+
+    // Coin tally, tinted briefly green or red as one is gained or lost.
+    drawCoin(ctx, width - 74, 32, 12);
+    ctx.textAlign = 'left';
+    ctx.font = '900 24px Archivo, system-ui, sans-serif';
+    ctx.fillStyle = s.flash > 0.05 ? '#15803d' : s.flash < -0.05 ? '#b91c1c' : '#17120e';
+    ctx.fillText(String(s.coins), width - 56, 41);
 
     ctx.font = '700 11px Archivo, system-ui, sans-serif';
     ctx.fillStyle = 'rgba(23,18,14,0.5)';

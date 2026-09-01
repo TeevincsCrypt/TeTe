@@ -3,12 +3,14 @@
 import { useRef } from 'react';
 
 import { GameCanvas, type Frame } from './GameCanvas';
-import { drawCar } from './sprites';
+import { drawCar, drawCoin, drawHazard } from './sprites';
 
 interface Slice { y: number; centre: number; half: number }
+interface Pickup { x: number; y: number; kind: 'coin' | 'hazard' }
 interface State {
   x: number; vx: number; dist: number; over: boolean; started: boolean;
   road: Slice[]; phase: number; curve: number; scroll: number;
+  pickups: Pickup[]; coins: number; flash: number; nextDrop: number;
 }
 
 const STEP = 12;
@@ -19,10 +21,15 @@ const STEP = 12;
  * An original game in the one-button driving genre. The road is generated as a
  * sine walk whose amplitude and frequency climb with distance, so it stays
  * drivable at the start and genuinely demands anticipation later.
+ *
+ * Coins and hazards drop down the road with it. Because steering is one
+ * button, reaching a coin on the far side means committing early — the cost of
+ * a coin is the line you give up to take it.
  */
-export function DriftGame({ onFinish }: { onFinish: (score: number) => void }) {
+export function DriftGame({ onFinish }: { onFinish: (score: number, coins: number) => void }) {
   const state = useRef<State>({
     x: 0.5, vx: 0, dist: 0, over: false, started: false, road: [], phase: 0, curve: 0, scroll: 0,
+    pickups: [], coins: 0, flash: 0, nextDrop: 0,
   });
   const done = useRef(false);
 
@@ -34,6 +41,7 @@ export function DriftGame({ onFinish }: { onFinish: (score: number) => void }) {
     state.current = {
       x: width / 2, vx: 0, dist: 0, over: false, started: true,
       road, phase: 0, curve: 0, scroll: 0,
+      pickups: [], coins: 0, flash: 0, nextDrop: 22,
     };
     done.current = false;
   }
@@ -76,25 +84,53 @@ export function DriftGame({ onFinish }: { onFinish: (score: number) => void }) {
         }
       }
 
-      // ---- collision against the slice under the car ---------------------
+      // ---- pickups: drop with the road, collect at the car ---------------
       const carY = height - 96;
+      for (const pickup of s.pickups) pickup.y += speed * dt;
+      s.pickups = s.pickups.filter((pickup) => {
+        if (Math.abs(pickup.y - carY) < 20 && Math.abs(pickup.x - s.x) < 22) {
+          s.coins += pickup.kind === 'coin' ? 1 : -1;
+          s.flash = pickup.kind === 'coin' ? 1 : -1;
+          return false;
+        }
+        return pickup.y < height + 40;
+      });
+
+      // Spawn on the road head so a pickup is always reachable in principle,
+      // just not always without giving up the safe line.
+      if (s.dist >= s.nextDrop) {
+        s.nextDrop = s.dist + 16 + Math.random() * 22;
+        const head = s.road[0];
+        if (head) {
+          const coin = Math.random() < 0.6;
+          s.pickups.push({
+            x: head.centre + (Math.random() * 2 - 1) * Math.max(0, head.half - 24),
+            y: 0,
+            kind: coin ? 'coin' : 'hazard',
+          });
+        }
+      }
+
+      // ---- collision against the slice under the car ---------------------
       const index = Math.round(carY / STEP);
       const slice = s.road[index];
       if (slice && Math.abs(s.x - slice.centre) > slice.half - 10) {
         s.over = true;
         if (!done.current) {
           done.current = true;
-          onFinish(Math.floor(s.dist));
+          onFinish(Math.floor(s.dist), s.coins);
         }
       }
       if (s.x < 0 || s.x > width) {
         s.over = true;
         if (!done.current) {
           done.current = true;
-          onFinish(Math.floor(s.dist));
+          onFinish(Math.floor(s.dist), s.coins);
         }
       }
     }
+
+    s.flash *= Math.max(0, 1 - dt * 2.2);
 
     // ---- draw -------------------------------------------------------------
     ctx.clearRect(0, 0, width, height);
@@ -119,6 +155,11 @@ export function DriftGame({ onFinish }: { onFinish: (score: number) => void }) {
     ctx.stroke();
     ctx.setLineDash([]);
 
+    for (const pickup of s.pickups) {
+      if (pickup.kind === 'coin') drawCoin(ctx, pickup.x, pickup.y, 13, performance.now() / 260 + pickup.x);
+      else drawHazard(ctx, pickup.x, pickup.y, 13);
+    }
+
     const carY = height - 96;
     ctx.save();
     ctx.translate(s.x, carY);
@@ -131,6 +172,12 @@ export function DriftGame({ onFinish }: { onFinish: (score: number) => void }) {
     ctx.font = '900 34px Archivo, system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText(String(Math.floor(s.dist)), 16, 42);
+
+    drawCoin(ctx, width - 74, 32, 12);
+    ctx.textAlign = 'left';
+    ctx.font = '900 24px Archivo, system-ui, sans-serif';
+    ctx.fillStyle = s.flash > 0.05 ? '#15803d' : s.flash < -0.05 ? '#b91c1c' : '#17120e';
+    ctx.fillText(String(s.coins), width - 56, 41);
 
     ctx.font = '700 11px Archivo, system-ui, sans-serif';
     ctx.fillStyle = 'rgba(23,18,14,0.5)';

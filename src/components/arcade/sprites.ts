@@ -260,3 +260,77 @@ export function drawBomb(
 
   ctx.restore();
 }
+
+/**
+ * A NIM coin to pick up. Gold disc, darker rim, and the wordmark's angled
+ * bars so it reads as this app's currency rather than generic treasure.
+ */
+export function drawCoin(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, bob = 0) {
+  ctx.save();
+  ctx.translate(x, y + Math.sin(bob) * r * 0.18);
+
+  ctx.fillStyle = '#b8860b';
+  ctx.beginPath();
+  ctx.arc(0, r * 0.14, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#f5c542';
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#d9a520';
+  ctx.lineWidth = Math.max(1.5, r * 0.14);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.74, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Two leaning bars — a stand-in for the Nimiq mark at this size.
+  ctx.fillStyle = '#8a6508';
+  ctx.save();
+  ctx.rotate(-0.42);
+  roundRect(ctx, -r * 0.42, -r * 0.4, r * 0.26, r * 0.8, r * 0.12);
+  ctx.fill();
+  roundRect(ctx, r * 0.14, -r * 0.4, r * 0.26, r * 0.8, r * 0.12);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.beginPath();
+  ctx.ellipse(-r * 0.36, -r * 0.42, r * 0.24, r * 0.14, -0.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/**
+ * A hazard that costs a coin. Deliberately not car-shaped or fruit-shaped —
+ * a spiked caltrop reads as "avoid" at a glance and cannot be mistaken for
+ * traffic in Crossing or for road furniture in Drift.
+ */
+export function drawHazard(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+  ctx.save();
+  ctx.translate(x, y);
+
+  ctx.fillStyle = 'rgba(23,18,14,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(0, r * 0.86, r * 0.8, r * 0.26, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#b91c1c';
+  ctx.beginPath();
+  for (let i = 0; i < 8; i += 1) {
+    const outer = i % 2 === 0 ? r : r * 0.46;
+    const angle = (i / 8) * Math.PI * 2 - Math.PI / 2;
+    ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#7f1d1d';
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.34, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
