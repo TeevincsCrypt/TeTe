@@ -31,3 +31,8 @@ export const MAX_PAYOUT_LUNA = Number(req('NIMIQ_MAX_PAYOUT_LUNA') ?? 500_000_00
 
 export const hasTreasury = Boolean(RPC_URL && TREASURY_ADDRESS && TREASURY_PASSPHRASE);
 export const hasDurableStore = Boolean(KV_URL && KV_TOKEN);
+/**
+ * A node to read the chain with. Enough to look up a balance, which is why it
+ * is separate from `hasTreasury` — reading needs no wallet and no passphrase.
+ */
+export const hasRpc = Boolean(RPC_URL);
