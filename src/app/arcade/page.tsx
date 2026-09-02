@@ -14,7 +14,7 @@ import { PhaseNote } from '@/components/ui/PhaseNote';
 import { GAMES, gameById, type GameId } from '@/lib/arcade/games';
 import { formatNim } from '@/lib/nimiq/units';
 import { useMiniApp } from '@/state/mini-app-provider';
-import { useEarnings } from '@/state/use-earnings';
+import { useRewardBalance } from '@/state/use-reward-balance';
 import { useProgress } from '@/state/use-progress';
 
 /**
@@ -30,7 +30,7 @@ import { useProgress } from '@/state/use-progress';
 export default function ArcadePage() {
   const { nimiq } = useMiniApp();
   const { progress, record } = useProgress();
-  const { totalLuna } = useEarnings();
+  const { balance: earned } = useRewardBalance();
   const [active, setActive] = useState<GameId | null>(null);
   const [result, setResult] = useState<
     | { score: number; coins: number; hazards: number; luna: number; record: boolean; at: number }
@@ -118,7 +118,7 @@ export default function ArcadePage() {
           <Link href="/wallet" className="pb-1 text-right active:opacity-60">
             <p className="text-[0.625rem] font-bold uppercase tracking-[0.14em] text-faint">Earned</p>
             <p className="text-[1.75rem] font-black leading-none tracking-[-0.03em] tabular">
-              {formatNim(totalLuna)}
+              {earned === null ? '—' : formatNim(earned, { maximumFractionDigits: 2 })}
               <span className="ml-1 text-[0.8125rem] text-faint">NIM</span>
             </p>
           </Link>

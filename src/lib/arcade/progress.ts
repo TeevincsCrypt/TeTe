@@ -53,11 +53,13 @@ export function readProgress(): Progress {
 }
 
 /**
- * Reward for today's check-in, in Luna. Grows with the streak, then plateaus so
- * a long run cannot drain a fixed pool on its own.
+ * Reward for today's check-in, in Luna. Flat, not scaled by streak: a
+ * multiplier against a fixed treasury is a slow leak, and the streak is worth
+ * keeping for its own sake. The server pays the same figure — see
+ * CHECK_IN_LUNA in lib/server/rewards.ts, which is the authoritative one.
  */
-export function checkInReward(streak: number): number {
-  return RATE_LUNA.streakDay * (1 + Math.min(Math.max(streak - 1, 0), 6) * 0.5);
+export function checkInReward(_streak: number): number {
+  return RATE_LUNA.streakDay;
 }
 
 export function canCheckIn(progress: Progress): boolean {

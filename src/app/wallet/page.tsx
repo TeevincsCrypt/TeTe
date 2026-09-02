@@ -3,22 +3,32 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { WalletIcon } from '@/components/shell/icons';
+import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { cn } from '@/components/ui/cn';
 import { PhaseNote } from '@/components/ui/PhaseNote';
 import { SlidingTabs } from '@/components/ui/SlidingTabs';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
-import { ApiError, fetchRewardBalance, fetchStatus, withdrawRewards } from '@/lib/api/client';
+import {
+  ApiError,
+  fetchRewardBalance,
+  fetchStatus,
+  lookupPlayer,
+  tipPlayer,
+  withdrawRewards,
+  type DirectoryPlayer,
+} from '@/lib/api/client';
 import { EXPLORER_TX_URL } from '@/lib/config/env';
 import { copyText } from '@/lib/clipboard';
 import { pushNotice } from '@/lib/notifications/notifications';
+import { compactAddress } from '@/lib/nimiq/address';
 import { formatNim, LUNA_PER_NIM } from '@/lib/nimiq/units';
 import { PAYOUT_THRESHOLD_LUNA } from '@/lib/wallet/earnings';
 import { useEarnings } from '@/state/use-earnings';
 import { useMiniApp } from '@/state/mini-app-provider';
 
-type Tab = 'earnings' | 'withdraw';
+type Tab = 'earnings' | 'withdraw' | 'tip';
 
 /**
  * Wallet: what the player has earned, and taking it out.
@@ -90,6 +100,7 @@ export default function WalletPage() {
         options={[
           { id: 'earnings', label: 'Earned' },
           { id: 'withdraw', label: 'Withdraw' },
+          { id: 'tip', label: 'Tip' },
         ]}
       />
 
@@ -139,6 +150,10 @@ export default function WalletPage() {
           locale={locale}
           onDone={refresh}
         />
+      )}
+
+      {tab === 'tip' && (
+        <TipPanel balance={balance} address={address} locale={locale} onDone={refresh} />
       )}
     </div>
   );
@@ -287,6 +302,217 @@ function WithdrawPanel({
         Withdrawing asks Nimiq Pay to sign, proving the address is yours, and the
         treasury sends the whole balance in one transaction. The minimum exists so a
         payout is worth more than the transaction that carries it.
+      </PhaseNote>
+    </section>
+  );
+}
+
+type TipState =
+  | { status: 'idle' }
+  | { status: 'sending' }
+  | { status: 'sent'; sent: number; username: string }
+  | { status: 'error'; message: string };
+
+const MIN_TIP_LUNA = 10_000;
+
+/**
+ * Send someone NIM by username.
+ *
+ * This moves NIM between TeTe balances rather than sending a transaction: no
+ * fee, instant, and it works below the withdrawal minimum — which is the whole
+ * point, since a 1 NIM tip is not worth a payout of its own. The recipient can
+ * withdraw it exactly like anything else they have earned.
+ *
+ * The username is resolved before sending so nobody tips into a typo, and the
+ * signature names both the recipient and the amount, so it cannot be replayed
+ * as a different tip.
+ */
+function TipPanel({
+  balance,
+  address,
+  locale,
+  onDone,
+}: {
+  balance: number | null;
+  address: string | null;
+  locale: string;
+  onDone: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [found, setFound] = useState<DirectoryPlayer | null>(null);
+  const [lookup, setLookup] = useState<'idle' | 'searching' | 'missing' | 'found'>('idle');
+  const [send, setSend] = useState<TipState>({ status: 'idle' });
+
+  const total = balance ?? 0;
+  const query = name.trim();
+
+  useEffect(() => {
+    if (query.length < 3) {
+      setLookup('idle');
+      setFound(null);
+      return;
+    }
+    let cancelled = false;
+    setLookup('searching');
+    const timer = setTimeout(async () => {
+      try {
+        const player = await lookupPlayer(query);
+        if (cancelled) return;
+        if (!player || (address && compactAddress(player.address) === compactAddress(address))) {
+          setFound(null);
+          setLookup('missing');
+          return;
+        }
+        setFound(player);
+        setLookup('found');
+      } catch {
+        if (!cancelled) {
+          setFound(null);
+          setLookup('missing');
+        }
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query, address]);
+
+  const luna = Math.round(Number(amount) * LUNA_PER_NIM);
+  const amountValid = Number.isInteger(luna) && luna >= MIN_TIP_LUNA && luna <= total;
+  const canSend = Boolean(address && found && amountValid && send.status !== 'sending');
+
+  async function tip() {
+    if (!address || !found) return;
+    setSend({ status: 'sending' });
+    try {
+      const result = await tipPlayer(address, found.username, luna);
+      setSend({ status: 'sent', sent: result.sent, username: result.username });
+      pushNotice('reward', 'Tip sent', `${formatNim(result.sent)} NIM to @${result.username}.`);
+      setAmount('');
+      setName('');
+      setFound(null);
+      setLookup('idle');
+      onDone();
+    } catch (cause: unknown) {
+      setSend({
+        status: 'error',
+        message: cause instanceof ApiError ? cause.message : 'The tip failed.',
+      });
+    }
+  }
+
+  if (send.status === 'sent') {
+    return (
+      <Sticker tone="contrast" className="mt-5 rounded-3xl p-6 text-center">
+        <p className="text-[1.5rem] font-black">{formatNim(send.sent, { locale })} NIM</p>
+        <p className="mt-2 text-[0.8125rem] leading-relaxed text-on-contrast/70">
+          Sent to @{send.username}. It is in their TeTe balance now — they can withdraw it
+          whenever they like.
+        </p>
+        <Button className="mt-5" onClick={() => setSend({ status: 'idle' })}>
+          Send another
+        </Button>
+      </Sticker>
+    );
+  }
+
+  return (
+    <section className="mt-5 space-y-3">
+      <Sticker tone="panel">
+        <Eyebrow className="text-faint">Tip from your balance</Eyebrow>
+        <p className="mt-1.5 text-[1.75rem] font-black leading-none tabular">
+          {formatNim(total, { locale })}
+          <span className="ml-1.5 text-[0.8125rem] text-faint">NIM available</span>
+        </p>
+      </Sticker>
+
+      <Sticker tone="panel">
+        <label htmlFor="tip-name" className="eyebrow text-faint">
+          Who
+        </label>
+        <div className="mt-2.5 flex items-center rounded-xl border border-line bg-panel-2 pl-3.5 focus-within:border-accent">
+          <span className="text-[1rem] font-black text-faint">@</span>
+          <input
+            id="tip-name"
+            value={name}
+            onChange={(event) => {
+              setName(event.target.value);
+              setSend({ status: 'idle' });
+            }}
+            placeholder="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            maxLength={16}
+            className="w-full min-w-0 bg-transparent px-1.5 py-3 text-[1rem] font-bold text-text placeholder:text-faint focus:outline-none"
+          />
+          {lookup === 'searching' && (
+            <span className="mr-3 size-4 shrink-0 animate-spin rounded-full border-2 border-faint border-t-transparent" />
+          )}
+        </div>
+
+        {lookup === 'missing' && (
+          <p className="mt-2 text-[0.75rem] font-semibold text-negative">
+            No player called @{query} — they claim their name in TeTe first.
+          </p>
+        )}
+
+        {found && lookup === 'found' && (
+          <div className="mt-3 flex items-center gap-3 rounded-xl bg-contrast p-3">
+            <Avatar address={found.address} size={36} />
+            <p className="display text-[1rem] text-on-contrast">@{found.username}</p>
+          </div>
+        )}
+      </Sticker>
+
+      <Sticker tone="panel">
+        <label htmlFor="tip-amount" className="eyebrow text-faint">
+          How much
+        </label>
+        <div className="mt-2.5 flex items-center rounded-xl border border-line bg-panel-2 px-3.5 focus-within:border-accent">
+          <input
+            id="tip-amount"
+            value={amount}
+            onChange={(event) => {
+              setAmount(event.target.value.replace(/[^0-9.]/g, ''));
+              setSend({ status: 'idle' });
+            }}
+            inputMode="decimal"
+            placeholder="0.00"
+            className="w-full min-w-0 bg-transparent py-3 text-[1rem] font-bold text-text placeholder:text-faint focus:outline-none tabular"
+          />
+          <span className="shrink-0 text-[0.8125rem] font-bold text-faint">NIM</span>
+        </div>
+        {amount !== '' && !amountValid && (
+          <p className="mt-2 text-[0.75rem] font-semibold text-negative">
+            {luna > total
+              ? `You only have ${formatNim(total, { locale })} NIM.`
+              : `The smallest tip is ${MIN_TIP_LUNA / LUNA_PER_NIM} NIM.`}
+          </p>
+        )}
+      </Sticker>
+
+      <Button onClick={tip} disabled={!canSend} loading={send.status === 'sending'} size="lg">
+        {!address
+          ? 'Connect your wallet first'
+          : !found
+            ? 'Find a player to tip'
+            : !amountValid
+              ? 'Enter an amount'
+              : `Tip @${found.username} ${formatNim(luna, { locale })} NIM`}
+      </Button>
+
+      {send.status === 'error' && (
+        <p role="alert" className="text-[0.8125rem] leading-relaxed text-negative">
+          {send.message}
+        </p>
+      )}
+
+      <PhaseNote>
+        A tip moves NIM straight from your TeTe balance to theirs — no transaction fee, and
+        no waiting for the chain. Signing proves the balance being spent is yours.
       </PhaseNote>
     </section>
   );

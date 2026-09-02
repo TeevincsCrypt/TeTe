@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { FormatArt } from '@/components/challenges/FormatArt';
 import { StateChip } from '@/components/challenges/StateChip';
 import { ChevronLeftIcon, CheckIcon } from '@/components/shell/icons';
+import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { PhaseNote } from '@/components/ui/PhaseNote';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
@@ -95,12 +96,17 @@ export default function ChallengeDetailPage() {
         <div className="p-5">
           <div className="flex items-center justify-between gap-3">
             <StateChip state={challenge.state} />
-            <span className="text-[0.75rem] font-semibold text-on-contrast/50">
-              {opponent
-                ? `vs ${opponent.username ? `@${opponent.username}` : shortenAddress(opponent.address)}`
-                : mySide
-                  ? 'Waiting for an opponent'
-                  : ''}
+            <span className="flex items-center gap-1.5 text-[0.75rem] font-semibold text-on-contrast/50">
+              {opponent ? (
+                <>
+                  <Avatar address={opponent.address} size={18} className="border-0" />
+                  vs {opponent.username ? `@${opponent.username}` : shortenAddress(opponent.address)}
+                </>
+              ) : mySide ? (
+                'Waiting for an opponent'
+              ) : (
+                ''
+              )}
             </span>
           </div>
           <h1 className="display mt-3 text-[1.75rem] text-on-contrast">{title}</h1>
@@ -176,11 +182,23 @@ function Header({ onBack }: { onBack: () => void }) {
   );
 }
 
-function ReportRow({ label, side }: { label: string; side: { username?: string; reported?: Side } }) {
+function ReportRow({
+  label,
+  side,
+}: {
+  label: string;
+  side: { username?: string; address: string; reported?: Side };
+}) {
   return (
-    <div className="flex items-center justify-between py-1.5 text-[0.8125rem]">
-      <span className="text-muted">{label}{side.username ? ` (@${side.username})` : ''}</span>
-      <span className="font-bold">
+    <div className="flex items-center justify-between gap-3 py-1.5 text-[0.8125rem]">
+      <span className="flex min-w-0 items-center gap-2 text-muted">
+        <Avatar address={side.address} size={20} className="border" />
+        <span className="truncate">
+          {label}
+          {side.username ? ` (@${side.username})` : ''}
+        </span>
+      </span>
+      <span className="shrink-0 font-bold">
         {side.reported ? `Says ${side.reported} won` : 'No report yet'}
       </span>
     </div>

@@ -24,7 +24,7 @@ import { defaultHandle } from '@/lib/profile/local-profile';
 import { useMiniApp } from '@/state/mini-app-provider';
 import { useDrafts } from '@/state/use-drafts';
 import { useLocalProfile } from '@/state/use-local-profile';
-import { useEarnings } from '@/state/use-earnings';
+import { useRewardBalance } from '@/state/use-reward-balance';
 import { useProgress } from '@/state/use-progress';
 
 const TICKER = ['Skill only', 'No luck', 'NIM and USDT', 'Winner takes all', 'Built on Nimiq'] as const;
@@ -34,7 +34,7 @@ export default function HomePage() {
   const { displayName } = useLocalProfile();
   const { drafts } = useDrafts();
   const { progress } = useProgress();
-  const { totalLuna } = useEarnings();
+  const { balance: earned } = useRewardBalance();
   const connected = nimiq.address !== null;
   const handle = displayName ?? defaultHandle(nimiq.address);
 
@@ -78,7 +78,7 @@ export default function HomePage() {
         <div className="grid grid-cols-4 divide-x divide-line">
           <Figure icon={<TrophyIcon className="size-3.5" />} label="Wins" value="0" />
           <Figure icon={<FlameIcon className="size-3.5" />} label="Streak" value={String(progress.streak)} />
-          <Figure icon={<StarIcon className="size-3.5" />} label="Earned" value={formatNim(totalLuna)} />
+          <Figure icon={<StarIcon className="size-3.5" />} label="Earned" value={earned === null ? '—' : formatNim(earned, { maximumFractionDigits: 2 })} />
           <Figure icon={<CrownIcon className="size-3.5" />} label="Rank" value="—" />
         </div>
       </section>

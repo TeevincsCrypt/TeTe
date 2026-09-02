@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { FormatArt } from '@/components/challenges/FormatArt';
 import { StateChip } from '@/components/challenges/StateChip';
+import { Avatar } from '@/components/ui/Avatar';
 import { formatById } from '@/lib/challenges/types';
 import { pot, type Challenge, type Side } from '@/lib/escrow/types';
 import { formatNim } from '@/lib/nimiq/units';
@@ -16,6 +17,9 @@ export function ChallengeRow({
   mySide?: Side | null;
 }) {
   const opponent = mySide === 'host' ? challenge.guest : mySide === 'guest' ? challenge.host : undefined;
+  // Whoever this row is "about" to the person reading it: their opponent, or
+  // the player a challenge they are looking at was aimed at.
+  const face = opponent ?? challenge.guest;
 
   return (
     <Link
@@ -27,13 +31,16 @@ export function ChallengeRow({
         <p className="truncate text-[0.9375rem] font-black tracking-tight">
           {challenge.title?.trim() || formatById(challenge.format).name}
         </p>
-        <p className="mt-0.5 truncate text-[0.75rem] text-faint">
-          {opponent
-            ? `vs ${opponent.username ? `@${opponent.username}` : 'opponent'}`
-            : challenge.guest
-              ? `Aimed at @${challenge.guest.username ?? 'a player'}`
-              : 'Open to anyone'}
-        </p>
+        <div className="mt-0.5 flex items-center gap-1.5">
+          {face && <Avatar address={face.address} size={16} className="border" />}
+          <p className="truncate text-[0.75rem] text-faint">
+            {opponent
+              ? `vs ${opponent.username ? `@${opponent.username}` : 'opponent'}`
+              : challenge.guest
+                ? `Aimed at @${challenge.guest.username ?? 'a player'}`
+                : 'Open to anyone'}
+          </p>
+        </div>
       </div>
       <div className="shrink-0 text-right">
         <p className="text-[0.9375rem] font-black tabular">

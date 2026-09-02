@@ -20,6 +20,8 @@ import type { Challenge, Side } from '@/lib/escrow/types';
 import { pushNotice } from './notifications';
 
 const KEY = 'tete.challenge-watch.v1';
+/** Set once this device has taken a baseline, so a first sync stays silent. */
+const READY_KEY = 'tete.challenge-watch.ready.v1';
 
 function readSeen(): Record<string, string> {
   if (typeof window === 'undefined') return {};
@@ -38,6 +40,24 @@ function writeSeen(seen: Record<string, string>): void {
     window.localStorage.setItem(KEY, JSON.stringify(seen));
   } catch {
     /* Storage unavailable; the next poll just re-derives the diff. */
+  }
+}
+
+function hasBaseline(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    return window.localStorage.getItem(READY_KEY) === '1';
+  } catch {
+    return true;
+  }
+}
+
+function markBaseline(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(READY_KEY, '1');
+  } catch {
+    /* Storage unavailable; every sync then behaves like a first one. */
   }
 }
 
@@ -84,12 +104,19 @@ function describe(challenge: Challenge, mySide: Side): string | null {
  * Diff the current state of a player's challenges against what this device
  * last saw, and push a notice for anything that changed meaningfully.
  *
- * First run on a device sees every challenge as "new" and records a baseline
- * silently — otherwise reopening the app on a fresh device would replay every
- * settled match ever played as if it just happened.
+ * The very first sync on a device records a baseline silently — otherwise
+ * opening the app on a fresh device would replay every settled match ever
+ * played as if it just happened. After that, a challenge id this device has
+ * never seen is genuinely new, and being called out by name is exactly the
+ * thing worth saying: it used to be swallowed by the same baseline rule that
+ * exists for the history, which is why a challenged friend was never told.
+ *
+ * This is still not a push notification. A Mini App cannot wake a phone, so
+ * the notice lands the next time they open TeTe.
  */
 export function checkChallengeUpdates(challenges: Challenge[], address: string): void {
   const seen = readSeen();
+  const baselined = hasBaseline();
   let changed = false;
 
   for (const challenge of challenges) {
@@ -97,13 +124,22 @@ export function checkChallengeUpdates(challenges: Challenge[], address: string):
     if (!mySide) continue;
 
     const previous = seen[challenge.id];
-    if (previous !== undefined && previous !== challenge.state) {
+
+    if (previous === undefined) {
+      // New to this device. Worth announcing only when it is waiting on them:
+      // someone aimed a challenge at them and it has not been accepted yet.
+      if (baselined && mySide === 'guest' && challenge.state === 'open') {
+        const label = challenge.title?.trim() || challenge.format;
+        pushNotice('challenge', `${opponentLabel(challenge, mySide)} challenged you`, label);
+      }
+    } else if (previous !== challenge.state) {
       const message = describe(challenge, mySide);
       if (message) {
         const label = challenge.title?.trim() || challenge.format;
         pushNotice('result', message, label);
       }
     }
+
     if (previous !== challenge.state) {
       seen[challenge.id] = challenge.state;
       changed = true;
@@ -111,4 +147,5 @@ export function checkChallengeUpdates(challenges: Challenge[], address: string):
   }
 
   if (changed) writeSeen(seen);
+  if (!baselined) markBaseline();
 }

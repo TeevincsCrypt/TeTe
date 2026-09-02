@@ -8,7 +8,7 @@ import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { FlameIcon, HandshakeIcon, ScalesIcon, TrophyIcon } from '@/components/shell/icons';
 import { Sunburst } from '@/components/ui/Sunburst';
 import { formatNim } from '@/lib/nimiq/units';
-import { useEarnings } from '@/state/use-earnings';
+import { useRewardBalance } from '@/state/use-reward-balance';
 import { useProgress } from '@/state/use-progress';
 
 /**
@@ -28,7 +28,7 @@ const RULES = [
 
 export default function LeaderboardPage() {
   const { progress } = useProgress();
-  const { totalLuna } = useEarnings();
+  const { balance: earned } = useRewardBalance();
 
   return (
     <div className="space-y-5 pt-2">
@@ -57,7 +57,7 @@ export default function LeaderboardPage() {
           <div className="flex items-end justify-between gap-3">
             <div>
               <p className="eyebrow text-faint">Earned</p>
-              <p className="display mt-1 text-[2rem] tabular">{formatNim(totalLuna)}</p>
+              <p className="display mt-1 text-[2rem] tabular">{earned === null ? '—' : formatNim(earned, { maximumFractionDigits: 2 })}</p>
             </div>
             <div className="text-right">
               <p className="eyebrow text-faint">Streak</p>

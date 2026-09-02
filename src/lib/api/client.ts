@@ -136,6 +136,24 @@ export async function challengeAction(
   extra: Record<string, unknown> = {},
 ): Promise<Challenge> {
   const auth = await signIntent(address, `${action}:${id}`);
+  return sendChallengeAction(id, auth, action, extra);
+}
+
+/**
+ * Post an already-signed challenge action.
+ *
+ * Split out from `challengeAction` so a caller that has to retry — funding
+ * waits for confirmations — can reuse one signature instead of raising a
+ * fresh Nimiq Pay dialog on every attempt. The signature stays valid for five
+ * minutes (MAX_AGE_MS in lib/server/auth.ts), which comfortably covers a
+ * retry loop measured in seconds.
+ */
+async function sendChallengeAction(
+  id: string,
+  auth: Awaited<ReturnType<typeof signIntent>>,
+  action: 'accept' | 'confirm-funding' | 'report',
+  extra: Record<string, unknown> = {},
+): Promise<Challenge> {
   const body = await post<{ challenge: Challenge }>(`/api/challenges/${id}`, { ...auth, action, ...extra });
   return body.challenge;
 }
@@ -159,13 +177,19 @@ export async function fundNimChallenge(address: string, challenge: Challenge): P
 
   await sendNim(challenge.escrowAddress, challenge.stake, fundingMemo(challenge.id));
 
+  // Sign once, before the wait — not inside it. Signing per attempt raised a
+  // fresh Nimiq Pay dialog every few seconds for the whole confirmation
+  // window, so funding a stake meant approving the same thing over and over
+  // with no way to tell whether any of it had worked.
+  const auth = await signIntent(address, `confirm-funding:${challenge.id}`);
+
   // The transaction needs a few confirmations before the server will count it
   // (see MIN_CONFIRMATIONS in lib/server/treasury.ts) — poll rather than
   // asking once and reporting failure on a transaction that only just sent.
   const attempts = 10;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      return await challengeAction(address, challenge.id, 'confirm-funding');
+      return await sendChallengeAction(challenge.id, auth, 'confirm-funding');
     } catch (cause: unknown) {
       const last = attempt === attempts - 1;
       if (last || !(cause instanceof ApiError) || cause.status !== 409) throw cause;
@@ -231,6 +255,56 @@ export async function claimGameReward(
     score,
     coins,
     hazards,
+  });
+}
+
+export interface StreakState {
+  streak: number;
+  claimedToday: boolean;
+  /** What a claim pays, in Luna. */
+  reward: number;
+}
+
+/** The server's view of the check-in — the one that pays. Null when unconfigured. */
+export async function fetchStreak(address: string): Promise<StreakState | null> {
+  try {
+    const response = await fetch(`/api/streak?address=${encodeURIComponent(address)}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as StreakState;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Claim today's check-in into the withdrawable balance. Unsigned for the same
+ * reason a finished round is — see /api/streak.
+ */
+export async function claimStreak(
+  address: string,
+): Promise<{ credited: number; balance: number; streak: number }> {
+  return post<{ credited: number; balance: number; streak: number }>('/api/streak', { address });
+}
+
+/**
+ * Tip another player by username, out of your own earned balance.
+ *
+ * Signed: this one gives your NIM away, so the server must be sure it was you
+ * who asked. The signature names the recipient and the amount, so it cannot be
+ * replayed for a different tip.
+ */
+export async function tipPlayer(
+  address: string,
+  username: string,
+  luna: number,
+): Promise<{ sent: number; balance: number; username: string }> {
+  const auth = await signIntent(address, `tip:${username.trim().toLowerCase()}:${luna}`);
+  return post<{ sent: number; balance: number; username: string }>('/api/tip', {
+    ...auth,
+    username: username.trim(),
+    luna,
   });
 }
 
