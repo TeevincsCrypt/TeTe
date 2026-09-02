@@ -33,7 +33,7 @@ const RATE_LUNA: Record<GameId, number> = {
 };
 
 /** Each coin picked up in Crossing or Drift. */
-const COIN_LUNA = 20_000; // 0.2 NIM
+const COIN_LUNA = 100_000; // 1 NIM
 /** Each hazard hit in Crossing or Drift. Costs more than a coin earns. */
 const HAZARD_LUNA = 50_000; // 0.5 NIM
 

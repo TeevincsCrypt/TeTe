@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import Link from 'next/link';
 
@@ -13,7 +13,7 @@ import { PhaseNote } from '@/components/ui/PhaseNote';
 import { StatTile } from '@/components/ui/StatTile';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { ConnectPanel } from '@/components/wallet/ConnectPanel';
-import { ApiError, claimUsername, myDirectoryName } from '@/lib/api/client';
+import { ApiError, claimUsername, myDirectoryName, saveProfileLook } from '@/lib/api/client';
 import { copyText } from '@/lib/clipboard';
 import { USERNAME_PATTERN } from '@/lib/roster/roster';
 import { preparePhoto } from '@/lib/profile/local-profile';
@@ -24,6 +24,7 @@ import { formatAddress, shortenAddress } from '@/lib/nimiq/address';
 import { defaultHandle } from '@/lib/profile/local-profile';
 import { useMiniApp } from '@/state/mini-app-provider';
 import { useDrafts } from '@/state/use-drafts';
+import { rememberPlayerLook } from '@/state/use-player-look';
 import { useRoster } from '@/state/use-roster';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { useLocalProfile } from '@/state/use-local-profile';
@@ -42,6 +43,29 @@ export default function ProfilePage() {
   const { nimiq, evm, locale } = useMiniApp();
   const { displayName, save, avatarSeed, saveAvatar, photo, savePhoto } = useLocalProfile();
   const [photoError, setPhotoError] = useState<string | null>(null);
+
+  /**
+   * Publish a look change to the directory as well as this device.
+   *
+   * Without this half, the face a player picks is the one face nobody else can
+   * see: their own phone shows it and every other player gets the generated
+   * default. Publishing needs a signature, so it is only attempted when
+   * something actually changed, and a failure is never fatal — the local
+   * choice still stands, it is just not shared yet.
+   */
+  const publishLook = useCallback(
+    async (look: { avatarSeed?: number | null; photo?: string | null }) => {
+      if (!nimiq.address) return;
+      try {
+        const player = await saveProfileLook(nimiq.address, look);
+        rememberPlayerLook(player);
+      } catch {
+        /* Not claimed a name yet, directory unavailable, or the signature was
+           declined. The device keeps the choice either way. */
+      }
+    },
+    [nimiq.address],
+  );
   const { drafts } = useDrafts();
   const { players, remove: removePlayer } = useRoster();
 
@@ -91,12 +115,17 @@ export default function ProfilePage() {
             onPick={async (file) => {
               setPhotoError(null);
               try {
-                savePhoto(await preparePhoto(file));
+                const prepared = await preparePhoto(file);
+                savePhoto(prepared);
+                void publishLook({ photo: prepared });
               } catch (cause: unknown) {
                 setPhotoError(cause instanceof Error ? cause.message : 'Could not use that image.');
               }
             }}
-            onClear={() => savePhoto(null)}
+            onClear={() => {
+              savePhoto(null);
+              void publishLook({ photo: null });
+            }}
           />
 
           {editing ? (
@@ -175,7 +204,10 @@ export default function ProfilePage() {
               <button
                 key={index}
                 type="button"
-                onClick={() => saveAvatar(seed)}
+                onClick={() => {
+                  saveAvatar(seed);
+                  void publishLook({ avatarSeed: seed });
+                }}
                 aria-label={seed === null ? 'Use default avatar' : `Avatar style ${index}`}
                 aria-pressed={active}
                 className={cn(

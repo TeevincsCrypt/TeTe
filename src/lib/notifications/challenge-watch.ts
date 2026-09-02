@@ -130,13 +130,18 @@ export function checkChallengeUpdates(challenges: Challenge[], address: string):
       // someone aimed a challenge at them and it has not been accepted yet.
       if (baselined && mySide === 'guest' && challenge.state === 'open') {
         const label = challenge.title?.trim() || challenge.format;
-        pushNotice('challenge', `${opponentLabel(challenge, mySide)} challenged you`, label);
+        pushNotice(
+          'challenge',
+          `${opponentLabel(challenge, mySide)} challenged you`,
+          label,
+          `/challenges/${challenge.id}`,
+        );
       }
     } else if (previous !== challenge.state) {
       const message = describe(challenge, mySide);
       if (message) {
         const label = challenge.title?.trim() || challenge.format;
-        pushNotice('result', message, label);
+        pushNotice('result', message, label, `/challenges/${challenge.id}`);
       }
     }
 

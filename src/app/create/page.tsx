@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { CheckIcon, ChevronLeftIcon, GlobeIcon, SwordsIcon, TargetIcon } from '@/components/shell/icons';
 import { FormatArt } from '@/components/challenges/FormatArt';
 import { Avatar } from '@/components/ui/Avatar';
+import { PlayerFace } from '@/components/ui/PlayerFace';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { cn } from '@/components/ui/cn';
@@ -557,7 +558,7 @@ function OpponentStep({
             <div className="rounded-2xl bg-contrast p-4 animate-[var(--animate-pop)]">
               <Eyebrow className="text-on-contrast/60">Opponent</Eyebrow>
               <div className="mt-2.5 flex items-center gap-3">
-                <Avatar address={rival.address} size={40} />
+                <PlayerFace address={rival.address} size={40} />
                 <p className="display text-[1.125rem] text-on-contrast">@{rival.username}</p>
               </div>
             </div>

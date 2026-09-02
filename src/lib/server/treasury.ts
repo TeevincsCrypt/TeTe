@@ -40,43 +40,131 @@ function assertReady(): void {
   }
 }
 
-function memoOf(tx: RpcTransaction): string {
-  const raw = tx.data ?? tx.recipientData ?? '';
-  if (!raw) return '';
-  try {
-    // Nimiq carries transaction data as hex; fall back to the raw string.
-    return /^[0-9a-fA-F]+$/.test(raw) && raw.length % 2 === 0
-      ? Buffer.from(raw, 'hex').toString('utf8')
-      : raw;
-  } catch {
-    return raw;
+/**
+ * Every readable form of a transaction's attached data.
+ *
+ * The wallet is handed a plain string and the node reports it back encoded,
+ * under a field name that has moved between Albatross versions (`data`,
+ * `recipientData`) and is sometimes wrapped in an object rather than being a
+ * bare string. Guessing one shape and comparing for exact equality is how a
+ * real stake went unrecognised: the payment was on chain and correct, and the
+ * memo simply did not survive the round trip in the form this expected.
+ *
+ * So every candidate is collected, in both raw and hex-decoded form, and the
+ * caller looks for the challenge id inside any of them.
+ */
+function memoCandidates(tx: RpcTransaction): string[] {
+  const fields: unknown[] = [tx.data, tx.recipientData, tx.senderData];
+  const out: string[] = [];
+
+  for (const field of fields) {
+    const raw =
+      typeof field === 'string'
+        ? field
+        : typeof field === 'object' && field !== null
+          ? // Some builds wrap it, e.g. { raw: "…" }.
+            String((field as { raw?: unknown; data?: unknown }).raw ??
+              (field as { data?: unknown }).data ??
+              '')
+          : '';
+    if (!raw) continue;
+
+    out.push(raw);
+    if (/^[0-9a-fA-F]+$/.test(raw) && raw.length % 2 === 0) {
+      try {
+        out.push(Buffer.from(raw, 'hex').toString('utf8'));
+      } catch {
+        /* Not really hex after all; the raw form is already recorded. */
+      }
+    }
   }
+  return out;
+}
+
+/** Does this transaction carry the given challenge's reference anywhere? */
+function carriesMemo(tx: RpcTransaction, challengeId: string): boolean {
+  const memo = fundingMemo(challengeId);
+  return memoCandidates(tx).some(
+    (value) => value.includes(memo) || value.includes(challengeId),
+  );
+}
+
+const compactAddr = (value: string) => value.replace(/\s+/g, '').toUpperCase();
+
+/**
+ * Payments from this address into the treasury that could fund a stake:
+ * right recipient, right sender, enough value, enough confirmations.
+ * Memo matching is applied by the caller, so it can fall back when the memo
+ * did not survive the wallet's encoding.
+ */
+export async function paymentsFrom(
+  fromAddress: string,
+  minValue: number,
+): Promise<RpcTransaction[]> {
+  assertReady();
+  const transactions = await transactionsFor(TREASURY_ADDRESS as string, 200);
+  return transactions.filter(
+    (tx) =>
+      compactAddr(tx.to) === compactAddr(TREASURY_ADDRESS as string) &&
+      compactAddr(tx.from) === compactAddr(fromAddress) &&
+      tx.value >= minValue &&
+      (tx.confirmations ?? 0) >= MIN_CONFIRMATIONS,
+  );
 }
 
 /**
  * Find the confirmed transaction that funds a challenge, or null.
- * Amount, sender, recipient, memo and confirmations must all line up.
+ *
+ * The memo is how one payment is tied to one challenge, so it is tried first.
+ * `claimed` lets the caller pass the hashes already spent on other challenges,
+ * which is what stops a single payment being counted twice when the memo is
+ * unreadable and the fallback below has to be used instead.
  */
 export async function findFunding(
   challengeId: string,
   fromAddress: string,
   minValue: number,
+  options: { claimed?: Set<string>; notBefore?: number } = {},
 ): Promise<RpcTransaction | null> {
-  assertReady();
-  const memo = fundingMemo(challengeId);
-  const compact = (value: string) => value.replace(/\s+/g, '').toUpperCase();
-
-  const transactions = await transactionsFor(TREASURY_ADDRESS as string, 200);
-  return (
-    transactions.find(
-      (tx) =>
-        compact(tx.to) === compact(TREASURY_ADDRESS as string) &&
-        compact(tx.from) === compact(fromAddress) &&
-        tx.value >= minValue &&
-        memoOf(tx).trim() === memo &&
-        (tx.confirmations ?? 0) >= MIN_CONFIRMATIONS,
-    ) ?? null
+  const candidates = (await paymentsFrom(fromAddress, minValue)).filter(
+    (tx) => !options.claimed?.has(tx.hash),
   );
+
+  const tagged = candidates.find((tx) => carriesMemo(tx, challengeId));
+  if (tagged) return tagged;
+
+  // No readable memo. A payment from exactly this player, to the treasury, for
+  // at least this stake, made after the challenge existed and not already
+  // counted against another challenge, is theirs — the memo was only ever the
+  // means of telling two of their payments apart, and `claimed` does that job
+  // here. Refusing on an unreadable memo would strand real money on chain.
+  return (
+    candidates.find((tx) => {
+      if (!options.notBefore) return true;
+      const at = txTimeMs(tx);
+      // No usable timestamp is not evidence against it; only a confidently
+      // older payment is. The slack matters: a block timestamp has
+      // second granularity and is set by the network, so a stake paid moments
+      // after a challenge was created can legitimately read as fractionally
+      // older than it. This window is only meant to exclude payments from a
+      // different session, not to referee seconds.
+      return at === null || at >= options.notBefore - AGE_SLACK_MS;
+    }) ?? null
+  );
+}
+
+/** How far before a challenge a payment for it may appear to have been made. */
+const AGE_SLACK_MS = 10 * 60 * 1000;
+
+/**
+ * A transaction's time in milliseconds, or null when it cannot be read.
+ * Albatross has reported this in both seconds and milliseconds, so the
+ * magnitude decides rather than an assumption.
+ */
+function txTimeMs(tx: RpcTransaction): number | null {
+  const value = tx.timestamp;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
+  return value < 1e12 ? value * 1000 : value;
 }
 
 /**

@@ -1,8 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { CloseIcon } from '@/components/shell/icons';
+import { ChevronRightIcon, CloseIcon } from '@/components/shell/icons';
 import { cn } from '@/components/ui/cn';
 import { useNotices } from '@/state/use-notices';
 
@@ -16,12 +17,13 @@ const TONES: Record<string, string> = {
 /**
  * The notification centre.
  *
- * Everything in it happened on this device. A real feed — an opponent accepting,
- * a result confirmed, a payout landing — needs a server to push it, so nothing
- * here pretends to be live from elsewhere.
+ * Nothing is pushed here — a Mini App cannot wake a phone — so these appear as
+ * the app notices them: things done on this device, and things found by polling
+ * (an opponent accepting, a tip arriving). A notice that points somewhere is a
+ * link, so acting on it is one tap rather than a hunt through the tabs.
  */
 export function NoticeBar({ onClose }: { onClose: () => void }) {
-  const { notices, markRead, clear } = useNotices();
+  const { notices, markRead, markOneRead, clear } = useNotices();
 
   // Opening the panel is the read receipt.
   useEffect(() => {
@@ -69,25 +71,53 @@ export function NoticeBar({ onClose }: { onClose: () => void }) {
           <p className="py-8 text-center text-[0.8125rem] text-faint">Nothing yet.</p>
         ) : (
           <ul className="max-h-[60dvh] divide-y divide-line overflow-y-auto">
-            {notices.map((notice) => (
-              <li key={notice.id} className="flex gap-3 py-3">
-                <span
-                  className={cn(
-                    'mt-1.5 size-1.5 shrink-0 rounded-full',
-                    notice.read ? 'bg-line' : 'bg-accent',
+            {notices.map((notice) => {
+              const body = (
+                <>
+                  <span
+                    className={cn(
+                      'mt-1.5 size-1.5 shrink-0 rounded-full',
+                      notice.read ? 'bg-line' : 'bg-accent',
+                    )}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className={cn('block text-[0.875rem] font-bold', TONES[notice.kind])}>
+                      {notice.title}
+                    </span>
+                    {notice.body && (
+                      <span className="mt-0.5 block text-[0.75rem] leading-snug text-muted">
+                        {notice.body}
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1 text-[0.625rem] text-faint tabular">
+                    {timeAgo(notice.at)}
+                    {notice.href && <ChevronRightIcon className="size-3.5" />}
+                  </span>
+                </>
+              );
+
+              return (
+                <li key={notice.id}>
+                  {notice.href ? (
+                    // A notice that names something worth looking at should take
+                    // you there, rather than leaving you to go and find it.
+                    <Link
+                      href={notice.href}
+                      onClick={() => {
+                        markOneRead(notice.id);
+                        onClose();
+                      }}
+                      className="flex w-full gap-3 py-3 text-left active:opacity-60"
+                    >
+                      {body}
+                    </Link>
+                  ) : (
+                    <div className="flex gap-3 py-3">{body}</div>
                   )}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className={cn('text-[0.875rem] font-bold', TONES[notice.kind])}>{notice.title}</p>
-                  {notice.body && (
-                    <p className="mt-0.5 text-[0.75rem] leading-snug text-muted">{notice.body}</p>
-                  )}
-                </div>
-                <span className="shrink-0 text-[0.625rem] text-faint tabular">
-                  {timeAgo(notice.at)}
-                </span>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

@@ -1,10 +1,14 @@
 /**
  * The local notification feed.
  *
- * These are records of things that happened on this device — a draft saved, a
- * reward earned, a challenge posted. Nothing arrives from a server, because
- * there is no server: a real feed (opponent accepted, result confirmed, payout
- * sent) needs a backend to push it.
+ * Records of things worth telling the player about: a draft saved, a reward
+ * earned, an opponent accepting, a tip arriving. Nothing is *pushed* here — a
+ * Mini App cannot wake a phone — so these are written as the app notices them,
+ * either from something done on this device or from polling the server.
+ *
+ * Each notice can carry an `href`, because a notice that names something the
+ * player would want to look at and then makes them go and find it is doing
+ * half a job.
  */
 import { createId } from '@/lib/ids';
 
@@ -20,6 +24,8 @@ export interface Notice {
   body?: string;
   at: number;
   read: boolean;
+  /** Where tapping it leads, when there is somewhere worth going. */
+  href?: string;
 }
 
 export function readNotices(): Notice[] {
@@ -39,9 +45,19 @@ export function pushNotice(
   kind: NoticeKind,
   title: string,
   body?: string,
+  href?: string,
 ): Notice[] {
-  const notice: Notice = { id: createId(), kind, title, body, at: Date.now(), read: false };
+  const notice: Notice = { id: createId(), kind, title, body, href, at: Date.now(), read: false };
   const next = [notice, ...readNotices()].slice(0, LIMIT);
+  write(next);
+  return next;
+}
+
+/** Mark one notice read — what opening it should do. */
+export function markRead(id: string): Notice[] {
+  const next = readNotices().map((notice) =>
+    notice.id === id ? { ...notice, read: true } : notice,
+  );
   write(next);
   return next;
 }

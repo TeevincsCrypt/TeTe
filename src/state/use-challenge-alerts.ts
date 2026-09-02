@@ -1,14 +1,19 @@
 'use client';
 
 /**
- * Watches this player's challenges in the background and turns state changes
- * into local notices — see `lib/notifications/challenge-watch.ts` for why this
- * is a poll diff rather than a push. Mounted once, in the app shell, so it
- * runs no matter which screen is open.
+ * Watches this player's challenges and balance activity in the background and
+ * turns what changed into local notices — see `challenge-watch.ts` for why
+ * this is a poll diff rather than a push. Mounted once, in the app shell, so
+ * it runs no matter which screen is open.
+ *
+ * Both feeds are polled on the same tick: a tip arriving and an opponent
+ * accepting are the same kind of event to a player, and neither should need a
+ * second timer.
  */
 import { useEffect, useRef } from 'react';
 
-import { fetchMyChallenges } from '@/lib/api/client';
+import { fetchActivity, fetchMyChallenges } from '@/lib/api/client';
+import { checkActivityUpdates } from '@/lib/notifications/activity-watch';
 import { checkChallengeUpdates } from '@/lib/notifications/challenge-watch';
 
 const POLL_MS = 6_000;
@@ -24,8 +29,13 @@ export function useChallengeAlerts(address: string | null): void {
       if (inFlight.current || document.visibilityState !== 'visible') return;
       inFlight.current = true;
       try {
-        const mine = await fetchMyChallenges(address);
-        if (!cancelled) checkChallengeUpdates(mine, address);
+        const [mine, activity] = await Promise.all([
+          fetchMyChallenges(address),
+          fetchActivity(address),
+        ]);
+        if (cancelled) return;
+        checkChallengeUpdates(mine, address);
+        if (activity) checkActivityUpdates(activity);
       } catch {
         /* Backend unavailable or a transient error — the next tick retries. */
       } finally {
