@@ -84,9 +84,14 @@ function describe(challenge: Challenge, mySide: Side): string | null {
       // The guest caused this by tapping Accept — they already saw it happen.
       return mySide === 'host' ? `${who} accepted your challenge` : null;
     case 'partly_funded':
-      return me?.fundingTx ? null : `${who} funded their stake — your turn`;
+      // Whoever has not paid is being waited on; whoever has just watched the
+      // other side pay. Both are worth saying, and saying nothing to the
+      // player who already staked is why "he added his stake" went unnoticed.
+      return me?.fundingTx
+        ? `${who} has not staked yet — you are waiting on them`
+        : `${who} staked — your turn`;
     case 'funded':
-      return 'Both sides are funded — time to report who won';
+      return 'Both stakes are in — say who won when you have played';
     case 'reported':
       return me?.reported ? null : `${who} reported a result — your turn`;
     case 'disputed':

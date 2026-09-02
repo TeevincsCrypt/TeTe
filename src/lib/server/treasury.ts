@@ -23,7 +23,16 @@ import { rpc, transactionsFor, type RpcTransaction } from './rpc';
  * Payouts are sent by the node holding the treasury wallet. Every guard below
  * exists because this is the code path that loses money if it is wrong.
  */
-const MIN_CONFIRMATIONS = 3;
+/**
+ * Confirmations required before a payment counts.
+ *
+ * One, matching what the payout path already trusts when it waits for its own
+ * transaction to land. Albatross finalises fast, and requiring three here
+ * while accepting one there was an inconsistency that only ever cost time —
+ * and, when a node reports no confirmation count at all for an incoming
+ * transaction, rejected real stakes forever.
+ */
+const MIN_CONFIRMATIONS = 1;
 
 export class TreasuryError extends Error {}
 
@@ -89,28 +98,67 @@ function carriesMemo(tx: RpcTransaction, challengeId: string): boolean {
   );
 }
 
-const compactAddr = (value: string) => value.replace(/\s+/g, '').toUpperCase();
+const compactAddr = (value: unknown) =>
+  typeof value === 'string' ? value.replace(/\s+/g, '').toUpperCase() : '';
 
 /**
- * Payments from this address into the treasury that could fund a stake:
- * right recipient, right sender, enough value, enough confirmations.
- * Memo matching is applied by the caller, so it can fall back when the memo
- * did not survive the wallet's encoding.
+ * Is this transaction settled enough to count?
+ *
+ * A confirmation count is the direct answer, but it is not always reported for
+ * an incoming transaction. Being in a block is the same evidence by another
+ * route, so a block number counts too — otherwise a node that simply omits the
+ * field rejects every real stake, forever, with nothing to show for it.
+ */
+function isSettled(tx: RpcTransaction): boolean {
+  if (typeof tx.confirmations === 'number') return tx.confirmations >= MIN_CONFIRMATIONS;
+  return typeof tx.blockNumber === 'number' && tx.blockNumber > 0;
+}
+
+/**
+ * Payments from one address into the escrow that could fund a stake.
+ *
+ * Two lists are searched, not one. The treasury's own history is the obvious
+ * place and the unreliable one: it is long, it is shared by every player, and
+ * it is capped. The payer's history is short, is theirs alone, and holds the
+ * transaction they just made — so a stake that is invisible in the first is
+ * usually plain in the second. Missing a real payment costs somebody's money,
+ * which is worth one extra call to the node.
+ *
+ * `escrowAddress` is the address the money was actually sent to, taken from
+ * the challenge rather than from configuration, so a treasury that was
+ * changed later cannot orphan the stakes paid before it.
  */
 export async function paymentsFrom(
   fromAddress: string,
   minValue: number,
-  known?: RpcTransaction[],
+  options: { known?: RpcTransaction[]; escrowAddress?: string } = {},
 ): Promise<RpcTransaction[]> {
   assertReady();
-  const transactions = known ?? (await transactionsFor(TREASURY_ADDRESS as string, 200));
-  return transactions.filter(
-    (tx) =>
-      compactAddr(tx.to) === compactAddr(TREASURY_ADDRESS as string) &&
+  const escrow = compactAddr(options.escrowAddress ?? TREASURY_ADDRESS);
+
+  const lists: RpcTransaction[][] = [];
+  lists.push(options.known ?? (await transactionsFor(TREASURY_ADDRESS as string, 200)));
+  try {
+    lists.push(await transactionsFor(fromAddress, 100));
+  } catch {
+    /* The payer's own history is a second opinion, not a requirement. */
+  }
+
+  const seen = new Set<string>();
+  const found: RpcTransaction[] = [];
+  for (const tx of lists.flat()) {
+    if (typeof tx.hash === 'string' && seen.has(tx.hash)) continue;
+    if (
+      compactAddr(tx.to) === escrow &&
       compactAddr(tx.from) === compactAddr(fromAddress) &&
       tx.value >= minValue &&
-      (tx.confirmations ?? 0) >= MIN_CONFIRMATIONS,
-  );
+      isSettled(tx)
+    ) {
+      if (typeof tx.hash === 'string') seen.add(tx.hash);
+      found.push(tx);
+    }
+  }
+  return found;
 }
 
 /**
@@ -125,11 +173,19 @@ export async function findFunding(
   challengeId: string,
   fromAddress: string,
   minValue: number,
-  options: { claimed?: Set<string>; notBefore?: number; known?: RpcTransaction[] } = {},
+  options: {
+    claimed?: Set<string>;
+    notBefore?: number;
+    known?: RpcTransaction[];
+    escrowAddress?: string;
+  } = {},
 ): Promise<RpcTransaction | null> {
-  const candidates = (await paymentsFrom(fromAddress, minValue, options.known)).filter(
-    (tx) => !options.claimed?.has(tx.hash),
-  );
+  const candidates = (
+    await paymentsFrom(fromAddress, minValue, {
+      known: options.known,
+      escrowAddress: options.escrowAddress,
+    })
+  ).filter((tx) => !options.claimed?.has(tx.hash));
 
   const tagged = candidates.find((tx) => carriesMemo(tx, challengeId));
   if (tagged) return tagged;
@@ -182,13 +238,18 @@ export async function explainMissingFunding(
   fromAddress: string,
   minValue: number,
   known?: RpcTransaction[],
+  escrowAddress?: string,
 ): Promise<string> {
   try {
-    const all = known ?? (await transactionsFor(TREASURY_ADDRESS as string, 200));
+    const escrow = compactAddr(escrowAddress ?? TREASURY_ADDRESS);
+    const all = [...(known ?? (await transactionsFor(TREASURY_ADDRESS as string, 200)))];
+    try {
+      all.push(...(await transactionsFor(fromAddress, 100)));
+    } catch {
+      /* Second opinion only. */
+    }
     const mine = all.filter(
-      (tx) =>
-        compactAddr(tx.to) === compactAddr(TREASURY_ADDRESS as string) &&
-        compactAddr(tx.from) === compactAddr(fromAddress),
+      (tx) => compactAddr(tx.to) === escrow && compactAddr(tx.from) === compactAddr(fromAddress),
     );
 
     if (mine.length === 0) {
@@ -201,10 +262,9 @@ export async function explainMissingFunding(
       return `A payment from you reached the escrow, but for ${best / 100_000} NIM — less than the stake.`;
     }
 
-    const confirmed = enough.filter((tx) => (tx.confirmations ?? 0) >= MIN_CONFIRMATIONS);
+    const confirmed = enough.filter(isSettled);
     if (confirmed.length === 0) {
-      const best = Math.max(...enough.map((tx) => tx.confirmations ?? 0));
-      return `Your payment has arrived and is waiting to settle (${best} of ${MIN_CONFIRMATIONS} confirmations).`;
+      return 'Your payment has arrived and is waiting for its block.';
     }
 
     return 'Your payment is on chain but has already been counted against another challenge.';

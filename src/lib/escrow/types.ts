@@ -48,6 +48,8 @@ export interface EscrowParty {
   acceptedAt?: number;
   /** Hash of the funding transaction, once verified on chain. */
   fundingTx?: string;
+  /** Set when a called-off challenge has returned this side's stake. */
+  refundTx?: string;
   fundedAt?: number;
   /** Which side this player says won. */
   reported?: Side;
@@ -71,6 +73,8 @@ export interface Challenge {
   winner?: Side;
   /** Hash of the payout transaction. */
   payoutTx?: string;
+  /** Who called the challenge off, when it was called off rather than played. */
+  cancelledBy?: Side;
   createdAt: number;
   updatedAt: number;
   /** Unfunded challenges expire so a stale board does not accumulate. */
@@ -103,7 +107,7 @@ export const LIVE_STATES: readonly EscrowState[] = [
   'open', 'accepted', 'partly_funded', 'funded', 'reported', 'disputed',
 ];
 
-export const TERMINAL_STATES: readonly EscrowState[] = ['settled', 'expired'];
+export const TERMINAL_STATES: readonly EscrowState[] = ['settled', 'expired', 'refunded'];
 
 /**
  * Legal transitions. Anything not listed is rejected, so a malformed or

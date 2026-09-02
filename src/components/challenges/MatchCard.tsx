@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 
 import { StateChip } from '@/components/challenges/StateChip';
-import { ChevronRightIcon } from '@/components/shell/icons';
+import { ChevronRightIcon, TrashIcon } from '@/components/shell/icons';
 import { Button } from '@/components/ui/Button';
 import { PlayerFace } from '@/components/ui/PlayerFace';
 import { cn } from '@/components/ui/cn';
@@ -36,6 +36,8 @@ export function MatchCard({
   onChanged: (challenge: Challenge) => void;
 }) {
   const [busy, setBusy] = useState<Side | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const opponent = mySide === 'host' ? challenge.guest : challenge.host;
@@ -53,6 +55,28 @@ export function MatchCard({
       setError(cause instanceof ApiError ? cause.message : 'Could not send your result.');
     } finally {
       setBusy(null);
+    }
+  }
+
+  // Calling it off is only offered before a result exists. After that the pot
+  // belongs to whoever won it.
+  const canCancel =
+    ['open', 'accepted', 'partly_funded', 'funded'].includes(challenge.state) &&
+    !challenge.host.reported &&
+    !challenge.guest?.reported;
+  const anyStaked = Boolean(challenge.host.fundingTx || challenge.guest?.fundingTx);
+
+  async function cancel() {
+    if (!address || cancelling) return;
+    setCancelling(true);
+    setError(null);
+    try {
+      onChanged(await challengeAction(address, challenge.id, 'cancel'));
+    } catch (cause: unknown) {
+      setError(cause instanceof ApiError ? cause.message : 'Could not call this off.');
+    } finally {
+      setCancelling(false);
+      setConfirmCancel(false);
     }
   }
 
@@ -90,6 +114,37 @@ export function MatchCard({
           <p role="alert" className="mt-2.5 text-[0.75rem] font-semibold text-negative">
             {error}
           </p>
+        )}
+
+        {canCancel && (
+          <div className="mt-3 border-t border-line pt-3">
+            {confirmCancel ? (
+              <div>
+                <p className="text-[0.75rem] leading-relaxed text-muted">
+                  {anyStaked
+                    ? 'Call it off and send every stake back to whoever paid it?'
+                    : 'Call this challenge off?'}
+                </p>
+                <div className="mt-2.5 flex gap-2.5">
+                  <Button variant="outline" onClick={() => setConfirmCancel(false)}>
+                    Keep it
+                  </Button>
+                  <Button variant="contrast" loading={cancelling} onClick={cancel}>
+                    {anyStaked ? 'Call off and refund' : 'Call it off'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmCancel(true)}
+                className="flex items-center gap-1.5 text-[0.75rem] font-bold text-faint transition-colors active:text-negative"
+              >
+                <TrashIcon className="size-3.5" />
+                Call this off
+              </button>
+            )}
+          </div>
         )}
       </div>
     </article>
