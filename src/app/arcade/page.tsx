@@ -3,9 +3,14 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+import { AlleyGame } from '@/components/arcade/AlleyGame';
 import { CrossingGame } from '@/components/arcade/CrossingGame';
 import { DriftGame } from '@/components/arcade/DriftGame';
 import { GameGlyph } from '@/components/arcade/GameGlyph';
+import { InvasionGame } from '@/components/arcade/InvasionGame';
+import { OverheatGame } from '@/components/arcade/OverheatGame';
+import { PitchGame } from '@/components/arcade/PitchGame';
+import { RushGame } from '@/components/arcade/RushGame';
 import { SliceGame } from '@/components/arcade/SliceGame';
 import { ChevronLeftIcon, ChevronRightIcon, CrownIcon } from '@/components/shell/icons';
 import { ApiError, claimGameReward, fetchStatus } from '@/lib/api/client';
@@ -82,6 +87,11 @@ export default function ArcadePage() {
           {active === 'crossing' && <CrossingGame key="crossing" onFinish={finish('crossing')} />}
           {active === 'drift' && <DriftGame key="drift" onFinish={finish('drift')} />}
           {active === 'slice' && <SliceGame key="slice" onFinish={finish('slice')} />}
+          {active === 'invasion' && <InvasionGame key="invasion" onFinish={finish('invasion')} />}
+          {active === 'rush' && <RushGame key="rush" onFinish={finish('rush')} />}
+          {active === 'pitch' && <PitchGame key="pitch" onFinish={finish('pitch')} />}
+          {active === 'overheat' && <OverheatGame key="overheat" onFinish={finish('overheat')} />}
+          {active === 'alley' && <AlleyGame key="alley" onFinish={finish('alley')} />}
         </div>
 
         {result && (
@@ -164,7 +174,7 @@ export default function ArcadePage() {
 
       <PhaseNote className="mt-6">
         {rewardsReady
-          ? 'Every finished round is banked to your withdrawable balance automatically. Coins on the road are worth 1 NIM each, caltrops cost you 0.5, and distance itself earns a trickle. Capped at 200 NIM a day per player.'
+          ? 'Every finished round is banked to your withdrawable balance automatically. Coins are worth 0.2 NIM each, hazards cost you 0.5, and your score itself earns a trickle. Capped at 200 NIM a day per player.'
           : 'Rewards are recorded on this device and are not yet payable. TeTe can only ask your wallet to send funds, never send funds to you, so paying these out needs a server that is not configured on this deployment.'}
       </PhaseNote>
     </div>

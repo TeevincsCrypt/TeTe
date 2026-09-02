@@ -46,6 +46,16 @@ export const RATE_LUNA = {
   drift: 100,
   /** 0.004 NIM per target sliced. */
   slice: 400,
+  /** 0.004 NIM per invader downed. */
+  invasion: 400,
+  /** 0.001 NIM per metre run. */
+  rush: 100,
+  /** 0.05 NIM per goal — a goal is many seconds of work, unlike a metre. */
+  pitch: 5_000,
+  /** 0.001 NIM per metre ridden. */
+  overheat: 100,
+  /** 0.006 NIM per opponent floored. */
+  alley: 600,
   /** 0.5 NIM for a daily check-in, flat. Must match CHECK_IN_LUNA in lib/server/rewards.ts. */
   streakDay: 50_000,
 } as const;
@@ -55,7 +65,7 @@ export const RATE_LUNA = {
  * coin costs a line, and that choice is where the reward should sit.
  * Must match COIN_LUNA in lib/server/rewards.ts, which is authoritative.
  */
-export const COIN_LUNA = 100_000; // 1 NIM
+export const COIN_LUNA = 20_000; // 0.2 NIM
 
 /**
  * A hazard hit mid-run. Costs more than a coin earns, so a miss is never
