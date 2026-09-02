@@ -45,27 +45,68 @@ export default function ProfilePage() {
   const [photoError, setPhotoError] = useState<string | null>(null);
 
   /**
-   * Publish a look change to the directory as well as this device.
+   * Whether what other players see matches what this device shows.
    *
-   * Without this half, the face a player picks is the one face nobody else can
-   * see: their own phone shows it and every other player gets the generated
-   * default. Publishing needs a signature, so it is only attempted when
-   * something actually changed, and a failure is never fatal — the local
-   * choice still stands, it is just not shared yet.
+   * A look kept only on the owner's phone is the one face nobody else can
+   * see, so this screen has to say out loud when the two disagree — silently
+   * trying and silently failing is how a picture ends up "set" for weeks
+   * while every opponent still sees a generated default.
    */
+  const [shared, setShared] = useState<'unknown' | 'syncing' | 'shared' | 'local-only'>('unknown');
+  const [shareError, setShareError] = useState<string | null>(null);
+
   const publishLook = useCallback(
     async (look: { avatarSeed?: number | null; photo?: string | null }) => {
       if (!nimiq.address) return;
+      setShared('syncing');
+      setShareError(null);
       try {
         const player = await saveProfileLook(nimiq.address, look);
         rememberPlayerLook(player);
-      } catch {
-        /* Not claimed a name yet, directory unavailable, or the signature was
-           declined. The device keeps the choice either way. */
+        setShared('shared');
+      } catch (cause: unknown) {
+        setShared('local-only');
+        setShareError(
+          cause instanceof ApiError
+            ? cause.message
+            : 'Could not share your picture with other players.',
+        );
       }
     },
     [nimiq.address],
   );
+
+  /**
+   * Check what the directory actually holds for this player, and offer to fix
+   * it when it does not match.
+   *
+   * This is the case that made the feature look broken: a picture chosen
+   * before it was ever published stays on the phone only, so nothing is
+   * "changed" to trigger a publish and the directory never learns about it.
+   */
+  useEffect(() => {
+    if (!nimiq.address) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const mine = await myDirectoryName(nimiq.address!);
+        if (cancelled) return;
+        if (!mine) {
+          setShared('unknown');
+          return;
+        }
+        const matches =
+          (mine.photo ?? null) === (photo ?? null) &&
+          (mine.avatarSeed ?? null) === (avatarSeed ?? null);
+        setShared(matches ? 'shared' : 'local-only');
+      } catch {
+        if (!cancelled) setShared('unknown');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [nimiq.address, photo, avatarSeed]);
   const { drafts } = useDrafts();
   const { players, remove: removePlayer } = useRoster();
 
@@ -179,6 +220,31 @@ export default function ProfilePage() {
           {photoError && (
             <p role="alert" className="mt-3 text-[0.75rem] font-semibold text-negative">
               {photoError}
+            </p>
+          )}
+
+          {/* What other players see. Silence here is what made a set picture
+              look broken: it showed on this phone and nowhere else. */}
+          {shared === 'local-only' && (
+            <button
+              type="button"
+              onClick={() => void publishLook({ avatarSeed, photo })}
+              className="mt-3 rounded-full bg-accent px-4 py-2 text-[0.75rem] font-black text-on-accent transition-transform active:scale-95"
+            >
+              Show this picture to other players
+            </button>
+          )}
+          {shared === 'syncing' && (
+            <p className="mt-3 text-[0.75rem] font-semibold text-on-contrast/60">Sharing…</p>
+          )}
+          {shared === 'shared' && (
+            <p className="mt-3 text-[0.75rem] font-semibold text-on-contrast/60">
+              Other players see this picture.
+            </p>
+          )}
+          {shareError && (
+            <p role="alert" className="mt-2 text-[0.75rem] font-semibold text-negative">
+              {shareError}
             </p>
           )}
 

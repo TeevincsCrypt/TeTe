@@ -92,3 +92,25 @@ function isNotice(value: unknown): value is Notice {
   const n = value as Partial<Notice>;
   return typeof n.id === 'string' && typeof n.title === 'string' && typeof n.at === 'number';
 }
+
+/**
+ * Where a notice should lead.
+ *
+ * Stored `href` wins, but most notices predate it — they were written before
+ * notices led anywhere, and they sit in storage for weeks. Falling back to a
+ * destination derived from the kind means every notice is actionable, not
+ * just the ones written since. Nothing here is a guess about *which* item:
+ * the kind alone says which screen is the right place to land.
+ */
+export function noticeHref(notice: Notice): string {
+  if (notice.href) return notice.href;
+  switch (notice.kind) {
+    case 'challenge':
+    case 'result':
+      return '/challenges';
+    case 'reward':
+      return '/wallet';
+    default:
+      return '/';
+  }
+}

@@ -157,6 +157,48 @@ export async function findFunding(
 const AGE_SLACK_MS = 10 * 60 * 1000;
 
 /**
+ * Why a stake could not be found, in a sentence a player can act on.
+ *
+ * "No confirmed payment found yet" is true and useless: it cannot tell apart a
+ * transaction still being mined, a node that has not indexed it, and a payment
+ * that never happened. Those need completely different responses from the
+ * person reading it, so the difference is worth the extra look at the chain.
+ */
+export async function explainMissingFunding(
+  fromAddress: string,
+  minValue: number,
+): Promise<string> {
+  try {
+    const all = await transactionsFor(TREASURY_ADDRESS as string, 200);
+    const mine = all.filter(
+      (tx) =>
+        compactAddr(tx.to) === compactAddr(TREASURY_ADDRESS as string) &&
+        compactAddr(tx.from) === compactAddr(fromAddress),
+    );
+
+    if (mine.length === 0) {
+      return 'The node cannot see any payment from your address to the escrow yet. It may still be spreading through the network.';
+    }
+
+    const enough = mine.filter((tx) => tx.value >= minValue);
+    if (enough.length === 0) {
+      const best = Math.max(...mine.map((tx) => tx.value));
+      return `A payment from you reached the escrow, but for ${best / 100_000} NIM — less than the stake.`;
+    }
+
+    const confirmed = enough.filter((tx) => (tx.confirmations ?? 0) >= MIN_CONFIRMATIONS);
+    if (confirmed.length === 0) {
+      const best = Math.max(...enough.map((tx) => tx.confirmations ?? 0));
+      return `Your payment has arrived and is waiting to settle (${best} of ${MIN_CONFIRMATIONS} confirmations).`;
+    }
+
+    return 'Your payment is on chain but has already been counted against another challenge.';
+  } catch {
+    return 'The node could not be reached to check. Your payment is not lost — try again shortly.';
+  }
+}
+
+/**
  * A transaction's time in milliseconds, or null when it cannot be read.
  * Albatross has reported this in both seconds and milliseconds, so the
  * magnitude decides rather than an assumption.
