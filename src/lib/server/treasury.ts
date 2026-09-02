@@ -100,9 +100,10 @@ const compactAddr = (value: string) => value.replace(/\s+/g, '').toUpperCase();
 export async function paymentsFrom(
   fromAddress: string,
   minValue: number,
+  known?: RpcTransaction[],
 ): Promise<RpcTransaction[]> {
   assertReady();
-  const transactions = await transactionsFor(TREASURY_ADDRESS as string, 200);
+  const transactions = known ?? (await transactionsFor(TREASURY_ADDRESS as string, 200));
   return transactions.filter(
     (tx) =>
       compactAddr(tx.to) === compactAddr(TREASURY_ADDRESS as string) &&
@@ -124,9 +125,9 @@ export async function findFunding(
   challengeId: string,
   fromAddress: string,
   minValue: number,
-  options: { claimed?: Set<string>; notBefore?: number } = {},
+  options: { claimed?: Set<string>; notBefore?: number; known?: RpcTransaction[] } = {},
 ): Promise<RpcTransaction | null> {
-  const candidates = (await paymentsFrom(fromAddress, minValue)).filter(
+  const candidates = (await paymentsFrom(fromAddress, minValue, options.known)).filter(
     (tx) => !options.claimed?.has(tx.hash),
   );
 
@@ -157,6 +158,19 @@ export async function findFunding(
 const AGE_SLACK_MS = 10 * 60 * 1000;
 
 /**
+ * The treasury's recent transactions, read once for a whole request.
+ *
+ * Settling two stakes and explaining two more used to mean four separate
+ * calls to the node for the same list, on every poll, from every player
+ * watching. A small self-hosted node feels that, and a slow node is
+ * indistinguishable from a broken one to whoever is waiting on it.
+ */
+export function treasuryHistory(max = 200): Promise<RpcTransaction[]> {
+  assertReady();
+  return transactionsFor(TREASURY_ADDRESS as string, max);
+}
+
+/**
  * Why a stake could not be found, in a sentence a player can act on.
  *
  * "No confirmed payment found yet" is true and useless: it cannot tell apart a
@@ -167,9 +181,10 @@ const AGE_SLACK_MS = 10 * 60 * 1000;
 export async function explainMissingFunding(
   fromAddress: string,
   minValue: number,
+  known?: RpcTransaction[],
 ): Promise<string> {
   try {
-    const all = await transactionsFor(TREASURY_ADDRESS as string, 200);
+    const all = known ?? (await transactionsFor(TREASURY_ADDRESS as string, 200));
     const mine = all.filter(
       (tx) =>
         compactAddr(tx.to) === compactAddr(TREASURY_ADDRESS as string) &&

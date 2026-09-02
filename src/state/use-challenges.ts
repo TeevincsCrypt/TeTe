@@ -66,5 +66,16 @@ export function useChallenges(address: string | null) {
     };
   }, [refresh]);
 
-  return { backend, escrow, board, mine, loaded, refresh };
+  /**
+   * Swap in a challenge the caller just changed, without waiting for the next
+   * poll. Reporting a result should land on screen the instant the server
+   * accepts it — up to six seconds of the old state after tapping "I won"
+   * reads as the tap not having worked.
+   */
+  const replace = useCallback((updated: Challenge) => {
+    setMine((current) => current.map((c) => (c.id === updated.id ? updated : c)));
+    setBoard((current) => current.filter((c) => c.id !== updated.id));
+  }, []);
+
+  return { backend, escrow, board, mine, loaded, refresh, replace };
 }

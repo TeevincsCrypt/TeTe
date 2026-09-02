@@ -152,6 +152,26 @@ export async function fetchChallenge(id: string): Promise<Challenge | null> {
   return body.challenge;
 }
 
+/** What the chain shows for each side's stake, when one is still missing. */
+export interface FundingView {
+  host?: string;
+  guest?: string;
+}
+
+/**
+ * A challenge plus what the server can see of any stake it is still waiting
+ * on. Same request as `fetchChallenge` — the reason comes back with the
+ * challenge so a player never has to ask for it.
+ */
+export async function fetchChallengeWithFunding(
+  id: string,
+): Promise<{ challenge: Challenge; funding: FundingView } | null> {
+  const response = await fetch(`/api/challenges/${id}`, { cache: 'no-store' });
+  if (response.status === 404) return null;
+  const body = await parse<{ challenge: Challenge; funding?: FundingView }>(response);
+  return { challenge: body.challenge, funding: body.funding ?? {} };
+}
+
 export async function challengeAction(
   address: string,
   id: string,
