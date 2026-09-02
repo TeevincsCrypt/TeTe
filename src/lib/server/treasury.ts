@@ -255,6 +255,91 @@ export async function findFunding(
 const AGE_SLACK_MS = 10 * 60 * 1000;
 
 /**
+ * Does this payment's memo name some *other* challenge?
+ *
+ * A readable memo naming a different challenge is the one piece of positive
+ * evidence that a payment is not this one's, and it is what stops a hash
+ * anybody can read off a public chain from being pointed at the wrong
+ * challenge. An unreadable or absent memo proves nothing either way.
+ */
+function memoNamesAnotherChallenge(tx: RpcTransaction, challengeId: string): boolean {
+  if (carriesMemo(tx, challengeId)) return false;
+  const marker = fundingMemo('');
+  return memoCandidates(tx).some((value) => value.includes(marker));
+}
+
+/**
+ * Every unclaimed payment into the escrow that is memoed for this challenge,
+ * whoever sent it.
+ *
+ * Counting these is what makes an unattended settle safe. Assigning tagged
+ * deposits to sides is only harmless while there are enough to go round: two
+ * deposits and two unfunded players means each gets one and nobody is left
+ * wrongly short, whereas one deposit and two unfunded players means guessing —
+ * and guessing wrong records a stake against a player who never paid while
+ * telling the one who did to pay again. That case waits for whoever actually
+ * paid to say so themselves.
+ */
+export async function taggedStakes(
+  challengeId: string,
+  minValue: number,
+  options: { claimed?: Set<string>; known?: RpcTransaction[]; escrowAddress?: string } = {},
+): Promise<RpcTransaction[]> {
+  const escrow = compactAddr(options.escrowAddress ?? TREASURY_ADDRESS);
+  const history = options.known ?? (await treasuryHistory());
+  return history.filter(
+    (tx) =>
+      !(typeof tx.hash === 'string' && options.claimed?.has(tx.hash)) &&
+      compactAddr(tx.to) === escrow &&
+      tx.value >= minValue &&
+      isSettled(tx) &&
+      carriesMemo(tx, challengeId),
+  );
+}
+
+/**
+ * Verify one specific transaction, named by the player, as their stake.
+ *
+ * Nimiq Pay hands the app a string when a send goes through, and a real case
+ * proved that string is the transaction hash: the value on the player's screen
+ * matched the transaction sitting in the escrow's own history exactly. The app
+ * therefore already holds a precise pointer to the payment — it simply never
+ * offered it to the server, which was left searching by sender address instead
+ * and finding nothing, because the wallet had sent from a different account of
+ * its own choosing.
+ *
+ * A hash is not a claim to be trusted, it is a place to look. Everything that
+ * matters is then checked against the chain: the transaction must really exist,
+ * really pay the escrow, really clear the stake, really be settled, not already
+ * be somebody's stake, and not carry a memo naming a different challenge.
+ * Nothing about who sent it is required, which is the entire point.
+ */
+export async function verifyStakeByHash(
+  hash: string,
+  challengeId: string,
+  minValue: number,
+  options: { claimed?: Set<string>; known?: RpcTransaction[]; escrowAddress?: string } = {},
+): Promise<RpcTransaction | null> {
+  assertReady();
+  const wanted = hash.trim().toLowerCase();
+  if (!wanted) return null;
+  if (options.claimed?.has(hash) || options.claimed?.has(wanted)) return null;
+
+  const escrowHistory = options.known ?? (await treasuryHistory());
+  const tx = escrowHistory.find(
+    (entry) => typeof entry.hash === 'string' && entry.hash.trim().toLowerCase() === wanted,
+  );
+  if (!tx) return null;
+
+  if (compactAddr(tx.to) !== compactAddr(options.escrowAddress ?? TREASURY_ADDRESS)) return null;
+  if (tx.value < minValue) return null;
+  if (!isSettled(tx)) return null;
+  if (memoNamesAnotherChallenge(tx, challengeId)) return null;
+
+  return tx;
+}
+
+/**
  * The treasury's recent transactions, read once for a whole request.
  *
  * Settling two stakes and explaining two more used to mean four separate

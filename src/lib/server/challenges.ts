@@ -11,7 +11,14 @@ import {
 } from '@/lib/escrow/types';
 import { recordActivity } from './activity';
 import { TREASURY_ADDRESS } from './env';
-import { explainMissingFunding, findFunding, payout, treasuryHistory } from './treasury';
+import {
+  explainMissingFunding,
+  findFunding,
+  payout,
+  taggedStakes,
+  treasuryHistory,
+  verifyStakeByHash,
+} from './treasury';
 import { get, list, push, set } from './store';
 
 /**
@@ -125,7 +132,11 @@ export async function acceptChallenge(id: string, address: string, username?: st
  * their signature before this function is even reached, which is what makes
  * it safe to credit them a deposit their own wallet was not the sender of.
  */
-export async function confirmFunding(id: string, address: string): Promise<Outcome<Challenge>> {
+export async function confirmFunding(
+  id: string,
+  address: string,
+  reportedHash?: string,
+): Promise<Outcome<Challenge>> {
   const challenge = await readChallenge(id);
   if (!challenge) return fail('No such challenge.', 404);
 
@@ -138,17 +149,29 @@ export async function confirmFunding(id: string, address: string): Promise<Outco
   if (party.fundingTx) return { ok: true, value: challenge };
 
   const otherParty = side === 'host' ? challenge.guest : challenge.host;
+  const claimed = await claimedFundingHashes();
 
-  const tx = await findFunding(id, address, challenge.stake, {
-    // Hashes already counted as somebody's stake, so an unmemoed payment
-    // cannot be claimed twice.
-    claimed: await claimedFundingHashes(),
-    // Their stake cannot predate the challenge it is paying for.
-    notBefore: challenge.createdAt,
-    escrowAddress: challenge.escrowAddress,
-    otherPartyAddress: otherParty?.address,
-    allowUnmatchedSender: true,
-  });
+  // What the wallet handed back when this player paid. It is the surest
+  // pointer to their payment that exists — the search below can only guess at
+  // which deposit is theirs, while this names it — so it is tried first, and
+  // then verified against the chain rather than believed.
+  const tx =
+    (reportedHash
+      ? await verifyStakeByHash(reportedHash, id, challenge.stake, {
+          claimed,
+          escrowAddress: challenge.escrowAddress,
+        })
+      : null) ??
+    (await findFunding(id, address, challenge.stake, {
+      // Hashes already counted as somebody's stake, so an unmemoed payment
+      // cannot be claimed twice.
+      claimed,
+      // Their stake cannot predate the challenge it is paying for.
+      notBefore: challenge.createdAt,
+      escrowAddress: challenge.escrowAddress,
+      otherPartyAddress: otherParty?.address,
+      allowUnmatchedSender: true,
+    }));
   if (!tx) {
     // Say which of the several very different reasons this is, so the player
     // knows whether to wait, to pay, or to come and ask.
@@ -244,17 +267,18 @@ export async function reportResult(id: string, address: string, winner: Side): P
  * record it until they came back and asked again.
  *
  * Two passes. The first requires the deposit to come from the player's own
- * registered address, same as always. The second — only for a side still
- * unfunded afterwards, and only when the *other* side is not *also* still
- * unfunded — allows a deposit from any address, as long as it is correctly
- * tagged for this challenge. That relaxation exists because a real stake was
- * found to land from an address neither player had on file (Nimiq Pay's Mini
- * App bridge sends from whichever account is active at signing time, not
- * necessarily the one a player connected with); it is withheld when both
- * sides are unfunded because nothing here can then say which of them an
- * address-mismatched deposit belongs to — that case is left for the player
- * who actually paid to settle themselves via a direct, signed confirmation,
- * where their own identity is independently proven.
+ * registered address, same as always. The second allows a deposit from any
+ * address, as long as it carries this challenge's memo — because a real case
+ * had *both* players' stakes land from addresses neither had on file (Nimiq
+ * Pay's Mini App bridge sends from whichever account is active at signing
+ * time, not necessarily the one a player connected with), leaving 40 NIM
+ * sitting correctly in escrow that nothing here would touch.
+ *
+ * Which of two memo-tagged deposits gets recorded against which side is then
+ * arbitrary, and harmless: the memo already proves both belong to this
+ * challenge, each hash can be claimed exactly once, and nothing downstream
+ * reads the sender — a refund goes to the registered address that owes it and
+ * a payout to the winner's, never to whoever the chain says paid.
  */
 export async function reconcileFunding(
   challenge: Challenge,
@@ -266,12 +290,6 @@ export async function reconcileFunding(
   let changed = false;
   let claimed: Set<string> | null = null;
   let history = known;
-
-  const stillUnfunded = () =>
-    sides.filter((side) => {
-      const party = side === 'host' ? challenge.host : challenge.guest;
-      return party && !party.fundingTx;
-    });
 
   const attempt = async (side: Side, allowUnmatchedSender: boolean) => {
     const party = side === 'host' ? challenge.host : challenge.guest;
@@ -308,10 +326,27 @@ export async function reconcileFunding(
     await attempt(side, false);
   }
 
-  const remaining = stillUnfunded();
-  const [onlyUnfunded] = remaining;
-  if (remaining.length === 1 && onlyUnfunded) {
-    await attempt(onlyUnfunded, true);
+  // Settling a deposit whose sender matches nobody is only safe while there
+  // are enough of them to cover everyone still owing — see `taggedStakes`.
+  const unfunded = sides.filter((side) => {
+    const party = side === 'host' ? challenge.host : challenge.guest;
+    return party && !party.fundingTx;
+  });
+  if (unfunded.length > 0) {
+    try {
+      claimed ??= await claimedFundingHashes();
+      history ??= await treasuryHistory();
+      const available = await taggedStakes(challenge.id, challenge.stake, {
+        claimed,
+        known: history,
+        escrowAddress: challenge.escrowAddress,
+      });
+      if (available.length >= unfunded.length) {
+        for (const side of unfunded) await attempt(side, true);
+      }
+    } catch {
+      /* Unreachable node: the next read tries again. */
+    }
   }
 
   if (!changed) return challenge;

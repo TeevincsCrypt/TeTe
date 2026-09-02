@@ -10,7 +10,7 @@
  * deliberate, user-initiated action — never something that fires on a render.
  */
 import { signingMessage } from '@/lib/api/message';
-import { clearSentStake, recordSentStake } from '@/lib/challenges/funding-record';
+import { clearSentStake, readSentStake, recordSentStake } from '@/lib/challenges/funding-record';
 import { fundingMemo, type Challenge } from '@/lib/escrow/types';
 import { sendNim, signMessage } from '@/lib/nimiq/provider';
 
@@ -243,7 +243,17 @@ export async function tryConfirmStake(
   auth: Awaited<ReturnType<typeof signIntent>>,
 ): Promise<{ challenge: Challenge } | { challenge: null; reason: string }> {
   try {
-    const challenge = await sendChallengeAction(challengeId, auth, 'confirm-funding');
+    // Hand over what the wallet reported when this device paid. Searching the
+    // chain for "a payment from this player" misses whenever Nimiq Pay sends
+    // from a different account of its own choosing, which it does; this names
+    // the transaction outright, and the server checks it against the chain.
+    const reported = readSentStake(challengeId);
+    const challenge = await sendChallengeAction(
+      challengeId,
+      auth,
+      'confirm-funding',
+      reported?.hash ? { hash: reported.hash } : {},
+    );
     clearSentStake(challengeId);
     return { challenge };
   } catch (cause: unknown) {
