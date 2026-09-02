@@ -8,6 +8,7 @@ import {
   readChallenge,
   reconcileFunding,
   reportResult,
+  voidDispute,
 } from '@/lib/server/challenges';
 import { hasDurableStore, hasTreasury } from '@/lib/server/env';
 import { explainMissingFunding, treasuryHistory } from '@/lib/server/treasury';
@@ -95,7 +96,8 @@ export async function POST(request: Request, { params }: Params) {
     action !== 'accept' &&
     action !== 'confirm-funding' &&
     action !== 'report' &&
-    action !== 'cancel'
+    action !== 'cancel' &&
+    action !== 'void'
   ) {
     return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
   }
@@ -113,6 +115,13 @@ export async function POST(request: Request, { params }: Params) {
 
   if (action === 'cancel') {
     const result = await cancelChallenge(id, auth.address);
+    return result.ok
+      ? NextResponse.json({ challenge: result.value })
+      : NextResponse.json({ error: result.error }, { status: result.status });
+  }
+
+  if (action === 'void') {
+    const result = await voidDispute(id, auth.address);
     return result.ok
       ? NextResponse.json({ challenge: result.value })
       : NextResponse.json({ error: result.error }, { status: result.status });

@@ -54,6 +54,13 @@ export interface EscrowParty {
   /** Which side this player says won. */
   reported?: Side;
   reportedAt?: number;
+  /**
+   * Set when this player has offered to call a disputed match off and take
+   * their own stake back rather than argue it out. It takes both sides to
+   * actually void, so this alone never moves money — otherwise whoever lost
+   * could escape a settled result by refusing to agree.
+   */
+  voidRequestedAt?: number;
 }
 
 export interface Challenge {
@@ -75,6 +82,15 @@ export interface Challenge {
   payoutTx?: string;
   /** Who called the challenge off, when it was called off rather than played. */
   cancelledBy?: Side;
+  /** When the two reports first disagreed. */
+  disputedAt?: number;
+  /**
+   * How a dispute ended, once it did: the players coming to agree on a winner,
+   * both agreeing to void it, or the operator arbitrating.
+   */
+  resolvedBy?: 'agreement' | 'void' | 'operator';
+  /** What the operator said when they arbitrated. Shown to both players. */
+  resolutionNote?: string;
   createdAt: number;
   updatedAt: number;
   /** Unfunded challenges expire so a stale board does not accumulate. */
@@ -154,6 +170,18 @@ export function resolveReports(challenge: Challenge): 'pending' | 'agreed' | 'co
   const b = challenge.guest?.reported;
   if (!a || !b) return 'pending';
   return a === b ? 'agreed' : 'conflict';
+}
+
+/**
+ * Have both sides offered to void a dispute?
+ *
+ * Both, always. One side wanting their stake back is a proposal, not an
+ * outcome: a player who has lost fairly would otherwise only have to refuse to
+ * agree in order to get their money back, which would make reporting honestly
+ * pointless.
+ */
+export function bothVoided(challenge: Challenge): boolean {
+  return Boolean(challenge.host.voidRequestedAt && challenge.guest?.voidRequestedAt);
 }
 
 /** Human label for a state, used in both the list and the detail screens. */
