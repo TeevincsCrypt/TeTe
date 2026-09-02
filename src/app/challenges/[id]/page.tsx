@@ -13,10 +13,11 @@ import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { ConnectPanel } from '@/components/wallet/ConnectPanel';
 import {
   challengeAction,
-  fetchChallenge,
+  fetchChallengeWithFunding,
   sendStake,
   signConfirmFunding,
   tryConfirmStake,
+  type FundingView,
 } from '@/lib/api/client';
 import { readSentStake, type SentStake } from '@/lib/challenges/funding-record';
 import { formatById } from '@/lib/challenges/types';
@@ -35,12 +36,15 @@ export default function ChallengeDetailPage() {
   const { nimiq } = useMiniApp();
 
   const [challenge, setChallenge] = useState<Challenge | null | undefined>(undefined);
+  const [funding, setFunding] = useState<FundingView>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setChallenge(await fetchChallenge(id));
+      const result = await fetchChallengeWithFunding(id);
+      setChallenge(result?.challenge ?? null);
+      setFunding(result?.funding ?? {});
     } catch {
       setChallenge(null);
     }
@@ -153,6 +157,7 @@ export default function ChallengeDetailPage() {
             busy={busy}
             onRun={run}
             onConfirmed={setChallenge}
+            funding={funding}
           />
         )}
       </div>
@@ -244,6 +249,7 @@ function ChallengeAction({
   busy,
   onRun,
   onConfirmed,
+  funding,
 }: {
   challenge: Challenge;
   mySide: Side | null;
@@ -251,6 +257,7 @@ function ChallengeAction({
   busy: string | null;
   onRun: (label: string, action: () => Promise<Challenge>) => Promise<void>;
   onConfirmed: (challenge: Challenge) => void;
+  funding: FundingView;
 }) {
   const compact = compactAddress(address);
 
@@ -299,7 +306,14 @@ function ChallengeAction({
         </Sticker>
       );
     }
-    return <FundingCard challenge={challenge} address={address} onConfirmed={onConfirmed} />;
+    return (
+      <FundingCard
+        challenge={challenge}
+        address={address}
+        onConfirmed={onConfirmed}
+        chainSays={mySide === 'host' ? funding.host : funding.guest}
+      />
+    );
   }
 
   // --- Reporting ----------------------------------------------------------
@@ -379,10 +393,13 @@ function FundingCard({
   challenge,
   address,
   onConfirmed,
+  chainSays,
 }: {
   challenge: Challenge;
   address: string;
   onConfirmed: (challenge: Challenge) => void;
+  /** What the server can see of this stake on chain, when it is still missing. */
+  chainSays?: string;
 }) {
   const [sent, setSent] = useState<SentStake | null>(null);
   const [phase, setPhase] = useState<'idle' | 'approving' | 'confirming'>('idle');
@@ -500,12 +517,12 @@ function FundingCard({
               chain to settle it, then it will show as funded and wait on your opponent.
             </p>
           </div>
-          {note && (
+          {(note ?? chainSays) && (
             <p className="mt-2.5 text-[0.75rem] leading-relaxed text-faint">
               {phase === 'confirming' && (
                 <span className="mr-1.5 inline-block size-2.5 animate-spin rounded-full border-2 border-faint border-t-transparent align-[-1px]" />
               )}
-              {note}
+              {note ?? chainSays}
             </p>
           )}
           {phase !== 'confirming' && (

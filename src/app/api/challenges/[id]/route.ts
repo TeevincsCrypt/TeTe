@@ -9,6 +9,7 @@ import {
   reportResult,
 } from '@/lib/server/challenges';
 import { hasDurableStore, hasTreasury } from '@/lib/server/env';
+import { explainMissingFunding, treasuryHistory } from '@/lib/server/treasury';
 import { lookupAddress } from '@/lib/server/players';
 
 export const runtime = 'nodejs';
@@ -31,9 +32,33 @@ export async function GET(_request: Request, { params }: Params) {
   // Settle any stake that has landed since this was last looked at, so the
   // page's own polling is enough to show funding without the payer having to
   // sit on the screen and approve anything further.
-  return NextResponse.json({
-    challenge: hasTreasury ? await reconcileFunding(challenge) : challenge,
-  });
+  // One read of the treasury's history serves both settling and explaining,
+  // rather than a fresh call to the node for each.
+  let history;
+  if (hasTreasury) {
+    try {
+      history = await treasuryHistory();
+    } catch {
+      /* Unreachable node: settle nothing, explain nothing, show the challenge. */
+    }
+  }
+  const settled = history ? await reconcileFunding(challenge, history) : challenge;
+
+  // When a side is still unfunded, say what the chain shows for them. A player
+  // staring at "awaiting stakes" after paying needs to know which of several
+  // very different situations they are in, and should not have to approve a
+  // signature to be told.
+  const funding: { host?: string; guest?: string } = {};
+  if (history && (settled.state === 'accepted' || settled.state === 'partly_funded')) {
+    if (!settled.host.fundingTx) {
+      funding.host = await explainMissingFunding(settled.host.address, settled.stake, history);
+    }
+    if (settled.guest && !settled.guest.fundingTx) {
+      funding.guest = await explainMissingFunding(settled.guest.address, settled.stake, history);
+    }
+  }
+
+  return NextResponse.json({ challenge: settled, funding });
 }
 
 /**

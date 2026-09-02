@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { ChallengeRow } from '@/components/challenges/ChallengeRow';
+import { MatchCard } from '@/components/challenges/MatchCard';
 import { BoltIcon, FlagIcon, NoteIcon, SwordsIcon, TrashIcon } from '@/components/shell/icons';
 import { ButtonLink } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
@@ -32,7 +33,7 @@ type Tab = 'board' | 'mine' | 'drafts';
 export default function ChallengesPage() {
   const { nimiq } = useMiniApp();
   const { drafts, loaded: draftsLoaded, remove } = useDrafts();
-  const { backend, board, mine, loaded: liveLoaded } = useChallenges(nimiq.address);
+  const { backend, board, mine, loaded: liveLoaded, replace } = useChallenges(nimiq.address);
 
   const [tab, setTab] = useState<Tab>('drafts');
   const defaultedTab = useRef(false);
@@ -81,6 +82,7 @@ export default function ChallengesPage() {
           active={activeMine}
           done={doneMine}
           myAddress={nimiq.address}
+          onChanged={replace}
         />
       )}
 
@@ -171,12 +173,14 @@ function MineTab({
   active,
   done,
   myAddress,
+  onChanged,
 }: {
   backend: 'checking' | 'ready' | 'unavailable';
   loaded: boolean;
   active: import('@/lib/escrow/types').Challenge[];
   done: import('@/lib/escrow/types').Challenge[];
   myAddress: string | null;
+  onChanged: (challenge: import('@/lib/escrow/types').Challenge) => void;
 }) {
   if (backend === 'unavailable') return <EscrowUnavailable />;
   if (!myAddress) {
@@ -214,11 +218,19 @@ function MineTab({
     <div className="space-y-5">
       {active.length > 0 && (
         <div>
-          <Eyebrow className="mb-1 text-faint">Active</Eyebrow>
-          <ul className="divide-y divide-line">
+          <Eyebrow className="mb-2 text-faint">Ongoing</Eyebrow>
+          {/* Cards rather than rows: a match in progress is always waiting on
+              somebody for something, and saying who won is the point of the
+              whole thing — neither should need another screen to reach. */}
+          <ul className="space-y-2.5">
             {active.map((challenge) => (
               <li key={challenge.id}>
-                <ChallengeRow challenge={challenge} mySide={mySide(challenge)} />
+                <MatchCard
+                  challenge={challenge}
+                  mySide={mySide(challenge)}
+                  address={myAddress}
+                  onChanged={onChanged}
+                />
               </li>
             ))}
           </ul>
@@ -226,11 +238,19 @@ function MineTab({
       )}
       {done.length > 0 && (
         <div>
-          <Eyebrow className="mb-1 text-faint">Done</Eyebrow>
-          <ul className="divide-y divide-line">
+          <Eyebrow className="mb-2 text-faint">Done</Eyebrow>
+          {/* Also cards: the outcome of a match — that you won, and that the
+              pot was sent — is the last thing a player wants to see, and a
+              one-line row cannot say it. */}
+          <ul className="space-y-2.5">
             {done.map((challenge) => (
               <li key={challenge.id}>
-                <ChallengeRow challenge={challenge} mySide={mySide(challenge)} />
+                <MatchCard
+                  challenge={challenge}
+                  mySide={mySide(challenge)}
+                  address={myAddress}
+                  onChanged={onChanged}
+                />
               </li>
             ))}
           </ul>

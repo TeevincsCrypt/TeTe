@@ -11,7 +11,7 @@ import {
 } from '@/lib/escrow/types';
 import { recordActivity } from './activity';
 import { TREASURY_ADDRESS } from './env';
-import { explainMissingFunding, findFunding, payout } from './treasury';
+import { explainMissingFunding, findFunding, payout, treasuryHistory } from './treasury';
 import { get, list, push, set } from './store';
 
 /**
@@ -227,12 +227,16 @@ export async function reportResult(id: string, address: string, winner: Side): P
  * player who closed the screen mid-wait had paid, and nothing would ever
  * record it until they came back and asked again.
  */
-export async function reconcileFunding(challenge: Challenge): Promise<Challenge> {
+export async function reconcileFunding(
+  challenge: Challenge,
+  known?: Awaited<ReturnType<typeof treasuryHistory>>,
+): Promise<Challenge> {
   if (challenge.state !== 'accepted' && challenge.state !== 'partly_funded') return challenge;
 
   const sides: Side[] = ['host', 'guest'];
   let changed = false;
   let claimed: Set<string> | null = null;
+  let history = known;
 
   for (const side of sides) {
     const party = side === 'host' ? challenge.host : challenge.guest;
@@ -241,9 +245,11 @@ export async function reconcileFunding(challenge: Challenge): Promise<Challenge>
     claimed ??= await claimedFundingHashes();
     let tx;
     try {
+      history ??= await treasuryHistory();
       tx = await findFunding(challenge.id, party.address, challenge.stake, {
         claimed,
         notBefore: challenge.createdAt,
+        known: history,
       });
     } catch {
       // An unreachable node is not a reason to fail the read; the next poll
