@@ -178,11 +178,36 @@ export async function findFunding(
     notBefore?: number;
     known?: RpcTransaction[];
     escrowAddress?: string;
+    /**
+     * The other player's address, if known. Only ever used to keep the
+     * fallback below from grabbing a deposit that is plainly theirs.
+     */
+    otherPartyAddress?: string;
+    /**
+     * Real evidence (a production diagnostic) showed a stake land on chain —
+     * correct escrow, correct value, correctly tagged with this challenge's
+     * memo, confirmed thousands of times over — from an address that was
+     * neither player's on file, because Nimiq Pay's Mini App bridge sends
+     * from whichever account is active in the wallet at signing time, which
+     * is not guaranteed to be the account a player first connected with.
+     * Requiring the on-chain sender to equal the registered address, as the
+     * normal search below does, made that real payment permanently
+     * unfindable. When set, and nothing owned by `fromAddress` turns up, this
+     * allows one more pass: any unclaimed, settled, sufficiently-valued
+     * deposit to the escrow that carries this exact challenge's memo, from
+     * any sender that is not plainly the other player's own address. Pass
+     * this only when the caller's own identity is independently proven (a
+     * signed request from them) — never from a passive background sweep with
+     * no specific asker to trust an address-mismatched deposit to.
+     */
+    allowUnmatchedSender?: boolean;
   } = {},
 ): Promise<RpcTransaction | null> {
+  const escrowHistory = options.known ?? (await treasuryHistory());
+
   const candidates = (
     await paymentsFrom(fromAddress, minValue, {
-      known: options.known,
+      known: escrowHistory,
       escrowAddress: options.escrowAddress,
     })
   ).filter((tx) => !options.claimed?.has(tx.hash));
@@ -195,17 +220,33 @@ export async function findFunding(
   // counted against another challenge, is theirs — the memo was only ever the
   // means of telling two of their payments apart, and `claimed` does that job
   // here. Refusing on an unreadable memo would strand real money on chain.
+  const recent = candidates.find((tx) => {
+    if (!options.notBefore) return true;
+    const at = txTimeMs(tx);
+    // No usable timestamp is not evidence against it; only a confidently
+    // older payment is. The slack matters: a block timestamp has
+    // second granularity and is set by the network, so a stake paid moments
+    // after a challenge was created can legitimately read as fractionally
+    // older than it. This window is only meant to exclude payments from a
+    // different session, not to referee seconds.
+    return at === null || at >= options.notBefore - AGE_SLACK_MS;
+  });
+  if (recent) return recent;
+
+  if (!options.allowUnmatchedSender) return null;
+
+  const escrow = compactAddr(options.escrowAddress ?? TREASURY_ADDRESS);
+  const other = compactAddr(options.otherPartyAddress);
   return (
-    candidates.find((tx) => {
-      if (!options.notBefore) return true;
-      const at = txTimeMs(tx);
-      // No usable timestamp is not evidence against it; only a confidently
-      // older payment is. The slack matters: a block timestamp has
-      // second granularity and is set by the network, so a stake paid moments
-      // after a challenge was created can legitimately read as fractionally
-      // older than it. This window is only meant to exclude payments from a
-      // different session, not to referee seconds.
-      return at === null || at >= options.notBefore - AGE_SLACK_MS;
+    escrowHistory.find((tx) => {
+      if (typeof tx.hash === 'string' && options.claimed?.has(tx.hash)) return false;
+      if (compactAddr(tx.to) !== escrow) return false;
+      if (tx.value < minValue) return false;
+      if (!isSettled(tx)) return false;
+      // Plainly the other player's own payment — never take it, even
+      // unmatched, so one side confirming cannot grab the other's stake.
+      if (other && compactAddr(tx.from) === other) return false;
+      return carriesMemo(tx, challengeId);
     }) ?? null
   );
 }
