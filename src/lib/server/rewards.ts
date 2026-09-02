@@ -30,11 +30,16 @@ const RATE_LUNA: Record<GameId, number> = {
   crossing: 500, // 0.005 NIM per row
   drift: 100, // 0.001 NIM per metre
   slice: 400, // 0.004 NIM per target
+  invasion: 400, // 0.004 NIM per invader downed
+  rush: 100, // 0.001 NIM per metre
+  pitch: 5_000, // 0.05 NIM per goal — a goal is worth many metres of running
+  overheat: 100, // 0.001 NIM per metre
+  alley: 600, // 0.006 NIM per opponent floored
 };
 
-/** Each coin picked up in Crossing or Drift. */
-const COIN_LUNA = 100_000; // 1 NIM
-/** Each hazard hit in Crossing or Drift. Costs more than a coin earns. */
+/** Each coin picked up in any game. */
+const COIN_LUNA = 20_000; // 0.2 NIM
+/** Each hazard hit. Still costs more than a coin earns, so a trade never pays. */
 const HAZARD_LUNA = 50_000; // 0.5 NIM
 
 /**
@@ -45,6 +50,12 @@ const MAX_SCORE: Record<GameId, number> = {
   crossing: 100_000,
   drift: 200_000,
   slice: 100_000,
+  invasion: 100_000,
+  rush: 200_000,
+  // A goal takes seconds of aiming, so even a marathon session stays low.
+  pitch: 10_000,
+  overheat: 200_000,
+  alley: 100_000,
 };
 const MAX_COINS = 1_000;
 
