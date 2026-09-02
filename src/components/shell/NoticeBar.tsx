@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 
 import { ChevronRightIcon, CloseIcon } from '@/components/shell/icons';
 import { cn } from '@/components/ui/cn';
+import { noticeHref } from '@/lib/notifications/notifications';
 import { useNotices } from '@/state/use-notices';
 
 const TONES: Record<string, string> = {
@@ -92,29 +93,26 @@ export function NoticeBar({ onClose }: { onClose: () => void }) {
                   </span>
                   <span className="flex shrink-0 items-center gap-1 text-[0.625rem] text-faint tabular">
                     {timeAgo(notice.at)}
-                    {notice.href && <ChevronRightIcon className="size-3.5" />}
+                    <ChevronRightIcon className="size-3.5" />
                   </span>
                 </>
               );
 
               return (
                 <li key={notice.id}>
-                  {notice.href ? (
-                    // A notice that names something worth looking at should take
-                    // you there, rather than leaving you to go and find it.
-                    <Link
-                      href={notice.href}
-                      onClick={() => {
-                        markOneRead(notice.id);
-                        onClose();
-                      }}
-                      className="flex w-full gap-3 py-3 text-left active:opacity-60"
-                    >
-                      {body}
-                    </Link>
-                  ) : (
-                    <div className="flex gap-3 py-3">{body}</div>
-                  )}
+                  {/* Every notice leads somewhere: notices written before they
+                      carried a destination fall back to one derived from their
+                      kind, so an old notice is as tappable as a new one. */}
+                  <Link
+                    href={noticeHref(notice)}
+                    onClick={() => {
+                      markOneRead(notice.id);
+                      onClose();
+                    }}
+                    className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-xl px-2 py-3.5 text-left transition-colors active:bg-panel-2"
+                  >
+                    {body}
+                  </Link>
                 </li>
               );
             })}

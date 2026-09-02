@@ -11,7 +11,13 @@ import { Button } from '@/components/ui/Button';
 import { PhaseNote } from '@/components/ui/PhaseNote';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { ConnectPanel } from '@/components/wallet/ConnectPanel';
-import { challengeAction, confirmSentStake, fetchChallenge, fundNimChallenge } from '@/lib/api/client';
+import {
+  challengeAction,
+  fetchChallenge,
+  sendStake,
+  signConfirmFunding,
+  tryConfirmStake,
+} from '@/lib/api/client';
 import { readSentStake, type SentStake } from '@/lib/challenges/funding-record';
 import { formatById } from '@/lib/challenges/types';
 import { copyText } from '@/lib/clipboard';
@@ -146,6 +152,7 @@ export default function ChallengeDetailPage() {
             address={nimiq.address}
             busy={busy}
             onRun={run}
+            onConfirmed={setChallenge}
           />
         )}
       </div>
@@ -236,12 +243,14 @@ function ChallengeAction({
   address,
   busy,
   onRun,
+  onConfirmed,
 }: {
   challenge: Challenge;
   mySide: Side | null;
   address: string;
   busy: string | null;
   onRun: (label: string, action: () => Promise<Challenge>) => Promise<void>;
+  onConfirmed: (challenge: Challenge) => void;
 }) {
   const compact = compactAddress(address);
 
@@ -290,14 +299,7 @@ function ChallengeAction({
         </Sticker>
       );
     }
-    return (
-      <FundingCard
-        challenge={challenge}
-        address={address}
-        busy={busy}
-        onRun={onRun}
-      />
-    );
+    return <FundingCard challenge={challenge} address={address} onConfirmed={onConfirmed} />;
   }
 
   // --- Reporting ----------------------------------------------------------
@@ -376,20 +378,67 @@ function ChallengeAction({
 function FundingCard({
   challenge,
   address,
-  busy,
-  onRun,
+  onConfirmed,
 }: {
   challenge: Challenge;
   address: string;
-  busy: string | null;
-  onRun: (label: string, action: () => Promise<Challenge>) => Promise<void>;
+  onConfirmed: (challenge: Challenge) => void;
 }) {
   const [sent, setSent] = useState<SentStake | null>(null);
+  const [phase, setPhase] = useState<'idle' | 'approving' | 'confirming'>('idle');
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     setSent(readSentStake(challenge.id));
-    // `busy` changing means an attempt just started or finished; a finished
-    // one may have cleared the record.
-  }, [challenge.id, busy]);
+  }, [challenge.id]);
+
+  /**
+   * Keep asking the server to find the payment, in the background.
+   *
+   * The signature is taken once and reused for the whole window — a wallet
+   * dialog every few seconds was the previous version of this bug. Between
+   * attempts the screen says what the chain is doing, because a spinner that
+   * runs for two minutes is indistinguishable from a hang, and the money has
+   * already left by then.
+   */
+  const confirming = useRef(false);
+  const confirmLoop = useCallback(
+    async (auth: Awaited<ReturnType<typeof signConfirmFunding>>) => {
+      if (confirming.current) return;
+      confirming.current = true;
+      setPhase('confirming');
+      try {
+        // Five minutes of patience, matching how long the signature is good
+        // for. Sitting here costs nothing: the stake is already paid.
+        for (let attempt = 0; attempt < 55; attempt += 1) {
+          const result = await tryConfirmStake(challenge.id, auth);
+          if (result.challenge) {
+            setSent(null);
+            setNote(null);
+            onConfirmed(result.challenge);
+            return;
+          }
+          setNote(result.reason);
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
+        setNote(
+          'Still not settled. Your stake is paid and safe — reopen this challenge to check again.',
+        );
+      } catch (cause: unknown) {
+        setError(cause instanceof Error ? cause.message : 'Could not check for your payment.');
+      } finally {
+        confirming.current = false;
+        setPhase('idle');
+      }
+    },
+    [challenge.id, onConfirmed],
+  );
+
+  // No signing on mount. The server settles a landed stake by itself on every
+  // read of this challenge, and this page already polls, so reopening the
+  // screen is enough — raising a wallet dialog nobody asked for would be a
+  // worse version of the problem this replaced.
 
   if (challenge.currency !== 'NIM') {
     return (
@@ -403,46 +452,88 @@ function FundingCard({
     );
   }
 
-  // A stake already sent from this device must never be sent again just
-  // because confirmation was slow. While that record stands, the only thing
-  // on offer is checking, not paying.
-  const alreadySent = sent !== null;
+  async function send() {
+    setError(null);
+    setNote(null);
+    setPhase('approving');
+    try {
+      const hash = await sendStake(challenge);
+      // The money has left. Say so before anything else can go wrong.
+      setSent({ challengeId: challenge.id, hash, at: Date.now() });
+      setNote('Waiting for the chain to settle it…');
+    } catch (cause: unknown) {
+      setPhase('idle');
+      setError(cause instanceof Error ? cause.message : 'Could not send your stake.');
+    }
+  }
+
+  async function checkAgain() {
+    setError(null);
+    try {
+      const auth = await signConfirmFunding(address, challenge.id);
+      void confirmLoop(auth);
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'Could not check for your payment.');
+    }
+  }
+
+  // Once the stake has left, this screen is about where it got to — never
+  // about paying again.
+  const paid = sent !== null;
 
   return (
     <Sticker tone="panel">
       <p className="text-[0.875rem] font-bold">
-        {alreadySent ? 'Waiting for your stake to confirm' : 'Fund your stake'}
+        {paid ? 'Your stake is paid' : 'Fund your stake'}
       </p>
       <p className="mt-1.5 text-[1.5rem] font-black tabular">
         {formatNim(challenge.stake)}
         <span className="ml-1.5 text-[0.8125rem] text-faint">NIM</span>
       </p>
-      <p className="mt-3 text-[0.75rem] leading-relaxed text-faint">
-        {alreadySent
-          ? 'You have already sent this stake. It is on chain and nothing is lost — it just has not been confirmed yet. Check again in a moment.'
-          : "Nimiq Pay will ask you to approve sending this to the escrow address, tagged with this challenge's reference so it is counted automatically."}
-      </p>
-      <Button
-        className="mt-4"
-        onClick={() =>
-          onRun('fund', () =>
-            alreadySent
-              ? confirmSentStake(address, challenge.id)
-              : fundNimChallenge(address, challenge),
-          )
-        }
-        loading={busy === 'fund'}
-      >
-        {busy === 'fund'
-          ? 'Confirming on chain…'
-          : alreadySent
-            ? 'Check for my payment'
-            : 'Send stake'}
-      </Button>
-      {alreadySent && (
-        <p className="mt-3 break-all font-mono text-[0.6875rem] text-faint">
-          Sent: {sent.hash}
+
+      {paid ? (
+        <>
+          <div className="mt-3 flex items-start gap-2 rounded-xl bg-positive/10 px-3 py-2.5">
+            <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-positive" strokeWidth={3} />
+            <p className="text-[0.75rem] leading-relaxed text-muted">
+              Sent from your wallet to the escrow. Nothing is lost — TeTe is waiting for the
+              chain to settle it, then it will show as funded and wait on your opponent.
+            </p>
+          </div>
+          {note && (
+            <p className="mt-2.5 text-[0.75rem] leading-relaxed text-faint">
+              {phase === 'confirming' && (
+                <span className="mr-1.5 inline-block size-2.5 animate-spin rounded-full border-2 border-faint border-t-transparent align-[-1px]" />
+              )}
+              {note}
+            </p>
+          )}
+          {phase !== 'confirming' && (
+            <Button className="mt-4" variant="outline" onClick={checkAgain}>
+              Check again
+            </Button>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="mt-3 text-[0.75rem] leading-relaxed text-faint">
+            Nimiq Pay will ask you to approve sending this to the escrow address, tagged with
+            this challenge&apos;s reference so it is counted automatically.
+          </p>
+          <Button className="mt-4" onClick={send} loading={phase === 'approving'}>
+            {phase === 'approving' ? 'Approve in Nimiq Pay…' : 'Send stake'}
+          </Button>
+        </>
+      )}
+
+      {error && (
+        <p role="alert" className="mt-3 text-[0.75rem] font-semibold text-negative">
+          {error}
         </p>
+      )}
+
+      {paid && (
+        <p className="mt-3 break-all font-mono text-[0.6875rem] text-faint">Sent: {sent.hash}</p>
       )}
       <p className="mt-3 break-all font-mono text-[0.6875rem] text-faint">
         Ref: {fundingMemo(challenge.id)}

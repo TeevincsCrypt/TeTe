@@ -5,6 +5,7 @@ import {
   acceptChallenge,
   confirmFunding,
   readChallenge,
+  reconcileFunding,
   reportResult,
 } from '@/lib/server/challenges';
 import { hasDurableStore, hasTreasury } from '@/lib/server/env';
@@ -26,7 +27,13 @@ export async function GET(_request: Request, { params }: Params) {
   const { id } = await params;
   const challenge = await readChallenge(id);
   if (!challenge) return NextResponse.json({ error: 'No such challenge.' }, { status: 404 });
-  return NextResponse.json({ challenge });
+
+  // Settle any stake that has landed since this was last looked at, so the
+  // page's own polling is enough to show funding without the payer having to
+  // sit on the screen and approve anything further.
+  return NextResponse.json({
+    challenge: hasTreasury ? await reconcileFunding(challenge) : challenge,
+  });
 }
 
 /**

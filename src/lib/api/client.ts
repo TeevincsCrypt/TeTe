@@ -190,7 +190,7 @@ async function sendChallengeAction(
  * Polygon (or whichever chain) for an incoming ERC-20 transfer, which is not
  * built — see the note on the funding screen for USDT challenges.
  */
-export async function fundNimChallenge(address: string, challenge: Challenge): Promise<Challenge> {
+export async function sendStake(challenge: Challenge): Promise<string> {
   if (challenge.currency !== 'NIM') {
     throw new ApiError('Only NIM challenges can be funded automatically right now.', 400);
   }
@@ -199,48 +199,44 @@ export async function fundNimChallenge(address: string, challenge: Challenge): P
   }
 
   const hash = await sendNim(challenge.escrowAddress, challenge.stake, fundingMemo(challenge.id));
-  // Written before the wait, not after it. If confirmation times out — or the
-  // screen is closed mid-wait — this is what stops the next tap paying again.
+  // Written before anything else can fail. If the confirmation never lands —
+  // or the screen is closed mid-wait — this is what stops the next tap paying
+  // a second time for a stake that has already gone.
   recordSentStake(challenge.id, hash);
-
-  return confirmSentStake(address, challenge.id);
+  return hash;
 }
 
 /**
- * Ask the server to find and record a stake that has already been sent.
+ * One attempt to have the server find and record an already-sent stake.
  *
- * Separate from sending, so a confirmation that ran out of patience can be
- * retried without moving any more money.
+ * Deliberately a *single* attempt. The previous version looped for two and a
+ * half minutes behind a spinner, which is indistinguishable from a hang: the
+ * money had left, the screen said nothing about that, and the only visible
+ * state was a button that would not stop loading. Callers now drive their own
+ * retries and can say what is happening between them.
+ *
+ * Returns null when the payment is not visible yet, with `reason` explaining
+ * which kind of "not yet" it is. Only a genuine failure throws.
  */
-export async function confirmSentStake(address: string, challengeId: string): Promise<Challenge> {
-  // Sign once, before the wait — not inside it. Signing per attempt raised a
-  // fresh Nimiq Pay dialog every few seconds for the whole confirmation
-  // window, so funding a stake meant approving the same thing over and over
-  // with no way to tell whether any of it had worked.
-  const auth = await signIntent(address, `confirm-funding:${challengeId}`);
-
-  // The transaction needs a few confirmations before the server will count it
-  // (see MIN_CONFIRMATIONS in lib/server/treasury.ts) — poll rather than
-  // asking once and reporting failure on a transaction that only just sent.
-  // The window is generous because giving up early is what leaves a paid
-  // stake looking unpaid; the signature is good for five minutes, so this
-  // stays comfortably inside it.
-  const attempts = 30;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      const challenge = await sendChallengeAction(challengeId, auth, 'confirm-funding');
-      clearSentStake(challengeId);
-      return challenge;
-    } catch (cause: unknown) {
-      const last = attempt === attempts - 1;
-      if (last || !(cause instanceof ApiError) || cause.status !== 409) throw cause;
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+export async function tryConfirmStake(
+  challengeId: string,
+  auth: Awaited<ReturnType<typeof signIntent>>,
+): Promise<{ challenge: Challenge } | { challenge: null; reason: string }> {
+  try {
+    const challenge = await sendChallengeAction(challengeId, auth, 'confirm-funding');
+    clearSentStake(challengeId);
+    return { challenge };
+  } catch (cause: unknown) {
+    if (cause instanceof ApiError && cause.status === 409) {
+      return { challenge: null, reason: cause.message };
     }
+    throw cause;
   }
-  throw new ApiError(
-    'Your payment has been sent but has not been confirmed yet. Nothing is lost — reopen this challenge and check again in a minute.',
-    409,
-  );
+}
+
+/** A signature for confirming this stake, good for five minutes of retries. */
+export function signConfirmFunding(address: string, challengeId: string) {
+  return signIntent(address, `confirm-funding:${challengeId}`);
 }
 
 export async function withdrawRewards(address: string) {

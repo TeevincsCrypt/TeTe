@@ -11,7 +11,7 @@ import {
 } from '@/lib/escrow/types';
 import { recordActivity } from './activity';
 import { TREASURY_ADDRESS } from './env';
-import { findFunding, payout } from './treasury';
+import { explainMissingFunding, findFunding, payout } from './treasury';
 import { get, list, push, set } from './store';
 
 /**
@@ -137,7 +137,9 @@ export async function confirmFunding(id: string, address: string): Promise<Outco
     notBefore: challenge.createdAt,
   });
   if (!tx) {
-    return fail('No confirmed payment found yet. It may still be settling on chain.', 409);
+    // Say which of the several very different reasons this is, so the player
+    // knows whether to wait, to pay, or to come and ask.
+    return fail(await explainMissingFunding(address, challenge.stake), 409);
   }
 
   party.fundingTx = tx.hash;
@@ -210,3 +212,56 @@ export async function reportResult(id: string, address: string, winner: Side): P
   }
 }
 
+
+/**
+ * Look for stakes that have landed but were never recorded.
+ *
+ * Whether a payment reached the escrow is an objective fact on a public
+ * chain, not something needing the payer's permission to observe — and the
+ * addresses checked come from the challenge itself, never from whoever is
+ * asking. So this runs on an ordinary read, which means a stake settles into
+ * the challenge on its own while the player watches, instead of only when
+ * they hold the app open and approve another signature.
+ *
+ * That matters because the alternative failed exactly when it was needed: a
+ * player who closed the screen mid-wait had paid, and nothing would ever
+ * record it until they came back and asked again.
+ */
+export async function reconcileFunding(challenge: Challenge): Promise<Challenge> {
+  if (challenge.state !== 'accepted' && challenge.state !== 'partly_funded') return challenge;
+
+  const sides: Side[] = ['host', 'guest'];
+  let changed = false;
+  let claimed: Set<string> | null = null;
+
+  for (const side of sides) {
+    const party = side === 'host' ? challenge.host : challenge.guest;
+    if (!party || party.fundingTx) continue;
+
+    claimed ??= await claimedFundingHashes();
+    let tx;
+    try {
+      tx = await findFunding(challenge.id, party.address, challenge.stake, {
+        claimed,
+        notBefore: challenge.createdAt,
+      });
+    } catch {
+      // An unreachable node is not a reason to fail the read; the next poll
+      // tries again.
+      return challenge;
+    }
+    if (!tx) continue;
+
+    party.fundingTx = tx.hash;
+    party.fundedAt = Date.now();
+    claimed.add(tx.hash);
+    await claimFundingHash(tx.hash, challenge.id);
+    changed = true;
+  }
+
+  if (!changed) return challenge;
+
+  const next = fundingState(challenge);
+  if (canTransition(challenge.state, next)) challenge.state = next;
+  return save(challenge);
+}
