@@ -119,7 +119,12 @@ export async function POST(request: Request, { params }: Params) {
   }
 
   if (action === 'confirm-funding') {
-    const result = await confirmFunding(id, auth.address);
+    // What the player's wallet reported when they paid. Only ever a pointer to
+    // look the payment up by — every property that matters is then read off
+    // the chain, so a wrong or invented hash finds nothing rather than
+    // proving anything.
+    const reportedHash = typeof body.hash === 'string' ? body.hash.slice(0, 128) : undefined;
+    const result = await confirmFunding(id, auth.address, reportedHash);
     return result.ok
       ? NextResponse.json({ challenge: result.value })
       : NextResponse.json({ error: result.error }, { status: result.status });

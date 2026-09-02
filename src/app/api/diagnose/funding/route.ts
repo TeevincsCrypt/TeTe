@@ -11,6 +11,35 @@ export const maxDuration = 30;
 const compact = (value: unknown) =>
   typeof value === 'string' ? value.replace(/\s+/g, '').toUpperCase() : null;
 
+/**
+ * The attached data, in every readable form.
+ *
+ * Reporting only the *types* of these fields was a mistake that cost a whole
+ * round: it could say a memo field was a string without saying whether the
+ * string was empty, so whether a real stake carried its challenge reference
+ * stayed unknown when that was the one thing worth knowing. The contents are
+ * a challenge id the player already has, never a key or a signature.
+ */
+function readableData(tx: RpcTransaction) {
+  const out: Record<string, unknown> = {};
+  for (const [name, field] of [
+    ['data', tx.data],
+    ['recipientData', tx.recipientData],
+    ['senderData', tx.senderData],
+  ] as const) {
+    if (typeof field !== 'string') {
+      out[name] = field === undefined || field === null ? null : typeof field;
+      continue;
+    }
+    const decoded =
+      /^[0-9a-fA-F]*$/.test(field) && field.length % 2 === 0
+        ? Buffer.from(field, 'hex').toString('utf8')
+        : null;
+    out[name] = { raw: field.slice(0, 200), decoded: decoded?.slice(0, 200) ?? null };
+  }
+  return out;
+}
+
 function summarize(tx: RpcTransaction) {
   return {
     hash: typeof tx.hash === 'string' ? tx.hash : tx.hash,
@@ -20,11 +49,7 @@ function summarize(tx: RpcTransaction) {
     confirmations: tx.confirmations,
     blockNumber: tx.blockNumber,
     timestamp: tx.timestamp,
-    dataFields: {
-      data: typeof tx.data,
-      recipientData: typeof tx.recipientData,
-      senderData: typeof tx.senderData,
-    },
+    data: readableData(tx),
   };
 }
 
@@ -110,15 +135,28 @@ export async function GET(request: Request) {
   }
 
   const wanted = { treasury: compact(treasury), host: compact(host), guest: compact(guest) };
-  const annotate = (tx: RpcTransaction) => ({
-    ...summarize(tx),
-    fromCompact: compact(tx.from),
-    toCompact: compact(tx.to),
-    toMatchesTreasury: compact(tx.to) === wanted.treasury,
-    fromMatchesHost: compact(tx.from) === wanted.host,
-    fromMatchesGuest: compact(tx.from) === wanted.guest,
-    valueClearsStake: typeof tx.value === 'number' && tx.value >= challenge.stake,
-  });
+  const annotate = (tx: RpcTransaction) => {
+    const summary = summarize(tx);
+    const memoText = Object.values(summary.data)
+      .map((field) =>
+        field && typeof field === 'object'
+          ? `${(field as { raw?: string }).raw ?? ''} ${(field as { decoded?: string }).decoded ?? ''}`
+          : '',
+      )
+      .join(' ');
+    return {
+      ...summary,
+      fromCompact: compact(tx.from),
+      toCompact: compact(tx.to),
+      toMatchesTreasury: compact(tx.to) === wanted.treasury,
+      fromMatchesHost: compact(tx.from) === wanted.host,
+      fromMatchesGuest: compact(tx.from) === wanted.guest,
+      valueClearsStake: typeof tx.value === 'number' && tx.value >= challenge.stake,
+      // The single fact that decides whether this challenge's stakes can be
+      // matched without anybody naming a hash by hand.
+      carriesThisChallengeMemo: memoText.includes(challenge.id),
+    };
+  };
 
   const lists = { treasuryTx, hostTx, guestTx };
 
