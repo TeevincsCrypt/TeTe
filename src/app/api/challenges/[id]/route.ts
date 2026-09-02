@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { verifySignedRequest } from '@/lib/server/auth';
 import {
   acceptChallenge,
+  cancelChallenge,
   confirmFunding,
   readChallenge,
   reconcileFunding,
@@ -51,10 +52,20 @@ export async function GET(_request: Request, { params }: Params) {
   const funding: { host?: string; guest?: string } = {};
   if (history && (settled.state === 'accepted' || settled.state === 'partly_funded')) {
     if (!settled.host.fundingTx) {
-      funding.host = await explainMissingFunding(settled.host.address, settled.stake, history);
+      funding.host = await explainMissingFunding(
+        settled.host.address,
+        settled.stake,
+        history,
+        settled.escrowAddress,
+      );
     }
     if (settled.guest && !settled.guest.fundingTx) {
-      funding.guest = await explainMissingFunding(settled.guest.address, settled.stake, history);
+      funding.guest = await explainMissingFunding(
+        settled.guest.address,
+        settled.stake,
+        history,
+        settled.escrowAddress,
+      );
     }
   }
 
@@ -80,7 +91,12 @@ export async function POST(request: Request, { params }: Params) {
   }
 
   const action = body.action;
-  if (action !== 'accept' && action !== 'confirm-funding' && action !== 'report') {
+  if (
+    action !== 'accept' &&
+    action !== 'confirm-funding' &&
+    action !== 'report' &&
+    action !== 'cancel'
+  ) {
     return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
   }
 
@@ -90,6 +106,13 @@ export async function POST(request: Request, { params }: Params) {
   if (action === 'accept') {
     const me = await lookupAddress(auth.address);
     const result = await acceptChallenge(id, auth.address, me?.username);
+    return result.ok
+      ? NextResponse.json({ challenge: result.value })
+      : NextResponse.json({ error: result.error }, { status: result.status });
+  }
+
+  if (action === 'cancel') {
+    const result = await cancelChallenge(id, auth.address);
     return result.ok
       ? NextResponse.json({ challenge: result.value })
       : NextResponse.json({ error: result.error }, { status: result.status });

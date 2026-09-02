@@ -2,12 +2,20 @@ import { NextResponse } from 'next/server';
 
 import { createId } from '@/lib/ids';
 import { verifySignedRequest } from '@/lib/server/auth';
-import { challengesFor, createChallenge, openChallenges } from '@/lib/server/challenges';
+import {
+  challengesFor,
+  createChallenge,
+  openChallenges,
+  reconcileFunding,
+} from '@/lib/server/challenges';
+import { treasuryHistory } from '@/lib/server/treasury';
 import { hasDurableStore, hasTreasury } from '@/lib/server/env';
 import { lookupAddress, lookupUsername } from '@/lib/server/players';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// Settling stakes on this read means talking to the node, so give it room.
+export const maxDuration = 30;
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -22,8 +30,34 @@ function unavailable() {
 export async function GET(request: Request) {
   if (!hasDurableStore) return unavailable();
   const address = new URL(request.url).searchParams.get('address');
-  const challenges = address ? await challengesFor(address) : await openChallenges();
-  return NextResponse.json({ challenges });
+  if (!address) return NextResponse.json({ challenges: await openChallenges() });
+
+  const challenges = await challengesFor(address);
+
+  // Settle stakes that have landed, here as well as on a single challenge.
+  // This is the list a player actually sits on — leaving reconciliation to the
+  // detail screen meant a paid stake stayed invisible unless they happened to
+  // open that one challenge, which is exactly how two paid players both sat
+  // looking at "awaiting stakes".
+  if (!hasTreasury) return NextResponse.json({ challenges });
+
+  const waiting = challenges.filter(
+    (c) => c.state === 'accepted' || c.state === 'partly_funded',
+  );
+  if (waiting.length === 0) return NextResponse.json({ challenges });
+
+  try {
+    const history = await treasuryHistory();
+    const settled = new Map(
+      (await Promise.all(waiting.map((c) => reconcileFunding(c, history)))).map((c) => [c.id, c]),
+    );
+    return NextResponse.json({
+      challenges: challenges.map((c) => settled.get(c.id) ?? c),
+    });
+  } catch {
+    // An unreachable node must not blank the list.
+    return NextResponse.json({ challenges });
+  }
 }
 
 /**

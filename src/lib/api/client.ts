@@ -175,7 +175,7 @@ export async function fetchChallengeWithFunding(
 export async function challengeAction(
   address: string,
   id: string,
-  action: 'accept' | 'confirm-funding' | 'report',
+  action: 'accept' | 'confirm-funding' | 'report' | 'cancel',
   extra: Record<string, unknown> = {},
 ): Promise<Challenge> {
   const auth = await signIntent(address, `${action}:${id}`);
@@ -194,7 +194,7 @@ export async function challengeAction(
 async function sendChallengeAction(
   id: string,
   auth: Awaited<ReturnType<typeof signIntent>>,
-  action: 'accept' | 'confirm-funding' | 'report',
+  action: 'accept' | 'confirm-funding' | 'report' | 'cancel',
   extra: Record<string, unknown> = {},
 ): Promise<Challenge> {
   const body = await post<{ challenge: Challenge }>(`/api/challenges/${id}`, { ...auth, action, ...extra });

@@ -135,11 +135,15 @@ export async function confirmFunding(id: string, address: string): Promise<Outco
     claimed: await claimedFundingHashes(),
     // Their stake cannot predate the challenge it is paying for.
     notBefore: challenge.createdAt,
+    escrowAddress: challenge.escrowAddress,
   });
   if (!tx) {
     // Say which of the several very different reasons this is, so the player
     // knows whether to wait, to pay, or to come and ask.
-    return fail(await explainMissingFunding(address, challenge.stake), 409);
+    return fail(
+      await explainMissingFunding(address, challenge.stake, undefined, challenge.escrowAddress),
+      409,
+    );
   }
 
   party.fundingTx = tx.hash;
@@ -250,6 +254,7 @@ export async function reconcileFunding(
         claimed,
         notBefore: challenge.createdAt,
         known: history,
+        escrowAddress: challenge.escrowAddress,
       });
     } catch {
       // An unreachable node is not a reason to fail the read; the next poll
@@ -271,3 +276,66 @@ export async function reconcileFunding(
   if (canTransition(challenge.state, next)) challenge.state = next;
   return save(challenge);
 }
+
+/**
+ * Call a challenge off, and give back anything already staked.
+ *
+ * Either player may do this while the match has not been played, because a
+ * challenge nobody is going to play should not be able to sit on somebody's
+ * money indefinitely — and a list you cannot clear is its own kind of trap.
+ *
+ * A stake that was recorded is refunded to the address that paid it, from the
+ * treasury, before the challenge is closed. Refunds are attempted for both
+ * sides and the state only moves once they have gone through, so a failure
+ * leaves the challenge exactly as it was rather than closing it over money
+ * that never came back.
+ */
+export async function cancelChallenge(id: string, address: string): Promise<Outcome<Challenge>> {
+  const challenge = await readChallenge(id);
+  if (!challenge) return fail('No such challenge.', 404);
+
+  const side: Side | null =
+    compact(challenge.host.address) === compact(address)
+      ? 'host'
+      : challenge.guest && compact(challenge.guest.address) === compact(address)
+        ? 'guest'
+        : null;
+  if (!side) return fail('You are not in this challenge.', 403);
+
+  if (!canTransition(challenge.state, 'refunded')) {
+    return fail(`A challenge that is ${challenge.state} cannot be called off.`, 409);
+  }
+  // Once results are in, the pot belongs to whoever won it, not to whoever
+  // asked first.
+  if (challenge.host.reported || challenge.guest?.reported) {
+    return fail('A result has already been reported. Settle it rather than calling it off.', 409);
+  }
+
+  for (const who of ['host', 'guest'] as const) {
+    const party = who === 'host' ? challenge.host : challenge.guest;
+    if (!party?.fundingTx || party.refundTx) continue;
+    try {
+      party.refundTx = await payout(party.address, challenge.stake, `tete:refund:${challenge.id}`);
+      await recordActivity(party.address, {
+        kind: 'payout',
+        luna: challenge.stake,
+        label: `Refund: ${challenge.title?.trim() || challenge.format}`,
+        href: `/challenges/${challenge.id}`,
+      });
+    } catch (cause: unknown) {
+      // Record whatever did come back, so a retry does not send it twice.
+      await save(challenge);
+      return fail(
+        cause instanceof Error ? `Could not refund the stakes: ${cause.message}` : 'Could not refund the stakes.',
+        502,
+      );
+    }
+  }
+
+  challenge.state = 'refunded';
+  challenge.cancelledBy = side;
+  await save(challenge);
+  return { ok: true, value: challenge };
+}
+
+const compact = (value: string) => value.replace(/\s+/g, '').toUpperCase();
