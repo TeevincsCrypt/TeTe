@@ -19,7 +19,7 @@ import {
   tryConfirmStake,
   type FundingView,
 } from '@/lib/api/client';
-import { readSentStake, type SentStake } from '@/lib/challenges/funding-record';
+import { clearSentStake, readSentStake, type SentStake } from '@/lib/challenges/funding-record';
 import { formatById } from '@/lib/challenges/types';
 import { copyText } from '@/lib/clipboard';
 import { EXPLORER_TX_URL } from '@/lib/config/env';
@@ -405,6 +405,13 @@ function FundingCard({
   const [phase, setPhase] = useState<'idle' | 'approving' | 'confirming'>('idle');
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Only ever set once the server has actually found this on chain. Nimiq
+  // Pay's own send call resolving with a string is not proof of that — its
+  // own SDK documents the return value as "the serialized transaction," and
+  // real cases have shown a resolved call with nothing ever reaching the
+  // escrow. So "paid" is never claimed on the strength of that call alone.
+  const [confirmed, setConfirmed] = useState(false);
+  const [giveUp, setGiveUp] = useState(false);
 
   useEffect(() => {
     setSent(readSentStake(challenge.id));
@@ -425,13 +432,16 @@ function FundingCard({
       if (confirming.current) return;
       confirming.current = true;
       setPhase('confirming');
+      setGiveUp(false);
       try {
         // Five minutes of patience, matching how long the signature is good
-        // for. Sitting here costs nothing: the stake is already paid.
+        // for — genuinely settling is worth waiting out. But this loop ending
+        // without a match is real information, not just slowness, so it is
+        // reported as such rather than papered over.
         for (let attempt = 0; attempt < 55; attempt += 1) {
           const result = await tryConfirmStake(challenge.id, auth);
           if (result.challenge) {
-            setSent(null);
+            setConfirmed(true);
             setNote(null);
             onConfirmed(result.challenge);
             return;
@@ -439,9 +449,7 @@ function FundingCard({
           setNote(result.reason);
           await new Promise((resolve) => setTimeout(resolve, 5000));
         }
-        setNote(
-          'Still not settled. Your stake is paid and safe — reopen this challenge to check again.',
-        );
+        setGiveUp(true);
       } catch (cause: unknown) {
         setError(cause instanceof Error ? cause.message : 'Could not check for your payment.');
       } finally {
@@ -472,12 +480,19 @@ function FundingCard({
   async function send() {
     setError(null);
     setNote(null);
+    setGiveUp(false);
     setPhase('approving');
     try {
       const hash = await sendStake(challenge);
-      // The money has left. Say so before anything else can go wrong.
+      // Nimiq Pay's own send call has resolved — but its SDK documents that
+      // return value as "the serialized transaction," not a hash, and this
+      // exact call has been seen to resolve with nothing ever reaching the
+      // escrow. So this is recorded (so a retry cannot double-pay if it
+      // *was* real) without being announced as paid.
       setSent({ challengeId: challenge.id, hash, at: Date.now() });
-      setNote('Waiting for the chain to settle it…');
+      setNote('Nimiq Pay reports this was sent. Confirming with the network…');
+      const auth = await signConfirmFunding(address, challenge.id);
+      void confirmLoop(auth);
     } catch (cause: unknown) {
       setPhase('idle');
       setError(cause instanceof Error ? cause.message : 'Could not send your stake.');
@@ -494,41 +509,64 @@ function FundingCard({
     }
   }
 
-  // Once the stake has left, this screen is about where it got to — never
-  // about paying again.
-  const paid = sent !== null;
+  /**
+   * Only for when nothing was ever confirmed. Clears the local record of a
+   * send, so the button below goes back to offering to pay — this is safe
+   * specifically because nothing here has ever been verified as real, so
+   * there is nothing a retry could double.
+   */
+  function abandonAndRetry() {
+    clearSentStake(challenge.id);
+    setSent(null);
+    setNote(null);
+    setGiveUp(false);
+  }
+
+  // A record that something was sent is not proof it landed. Only a server
+  // confirmation earns the word "paid".
+  const attempted = sent !== null && !confirmed;
 
   return (
     <Sticker tone="panel">
       <p className="text-[0.875rem] font-bold">
-        {paid ? 'Your stake is paid' : 'Fund your stake'}
+        {attempted ? 'Confirming your stake' : 'Fund your stake'}
       </p>
       <p className="mt-1.5 text-[1.5rem] font-black tabular">
         {formatNim(challenge.stake)}
         <span className="ml-1.5 text-[0.8125rem] text-faint">NIM</span>
       </p>
 
-      {paid ? (
+      {attempted ? (
         <>
-          <div className="mt-3 flex items-start gap-2 rounded-xl bg-positive/10 px-3 py-2.5">
-            <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-positive" strokeWidth={3} />
+          <div className="mt-3 flex items-start gap-2 rounded-xl bg-panel-2 px-3 py-2.5">
+            {phase === 'confirming' && !giveUp && (
+              <span className="mt-0.5 size-3.5 shrink-0 animate-spin rounded-full border-2 border-faint border-t-transparent" />
+            )}
             <p className="text-[0.75rem] leading-relaxed text-muted">
-              Sent from your wallet to the escrow. Nothing is lost — TeTe is waiting for the
-              chain to settle it, then it will show as funded and wait on your opponent.
+              {giveUp
+                ? "This still has not shown up on chain. It may genuinely not have been sent — open Nimiq Pay's own transaction history and look for a payment to the address below. If it is not there, nothing has left your wallet."
+                : 'Nimiq Pay reported this as sent. Waiting for it to actually appear on chain before counting it — a wallet reporting success is not the same as a payment landing.'}
             </p>
           </div>
-          {(note ?? chainSays) && (
-            <p className="mt-2.5 text-[0.75rem] leading-relaxed text-faint">
-              {phase === 'confirming' && (
-                <span className="mr-1.5 inline-block size-2.5 animate-spin rounded-full border-2 border-faint border-t-transparent align-[-1px]" />
-              )}
-              {note ?? chainSays}
+          {(note ?? chainSays) && !giveUp && (
+            <p className="mt-2.5 text-[0.75rem] leading-relaxed text-faint">{note ?? chainSays}</p>
+          )}
+          {giveUp && (
+            <p className="mt-2.5 break-all font-mono text-[0.6875rem] text-faint">
+              Escrow: {challenge.escrowAddress}
             </p>
           )}
           {phase !== 'confirming' && (
-            <Button className="mt-4" variant="outline" onClick={checkAgain}>
-              Check again
-            </Button>
+            <div className="mt-4 flex gap-2.5">
+              <Button variant="outline" onClick={checkAgain}>
+                Check again
+              </Button>
+              {giveUp && (
+                <Button variant="contrast" onClick={abandonAndRetry}>
+                  Nothing was sent — retry
+                </Button>
+              )}
+            </div>
           )}
         </>
       ) : (
@@ -549,8 +587,11 @@ function FundingCard({
         </p>
       )}
 
-      {paid && (
-        <p className="mt-3 break-all font-mono text-[0.6875rem] text-faint">Sent: {sent.hash}</p>
+      {sent && (
+        <p className="mt-3 break-all font-mono text-[0.6875rem] text-faint">
+          {confirmed ? 'Confirmed: ' : 'Nimiq Pay reported: '}
+          {sent.hash}
+        </p>
       )}
       <p className="mt-3 break-all font-mono text-[0.6875rem] text-faint">
         Ref: {fundingMemo(challenge.id)}
