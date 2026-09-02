@@ -46,8 +46,8 @@ export const RATE_LUNA = {
   drift: 100,
   /** 0.004 NIM per target sliced. */
   slice: 400,
-  /** 1 NIM for the first day of a streak, scaling to 4. */
-  streakDay: 100_000,
+  /** 0.5 NIM for a daily check-in, flat. Must match CHECK_IN_LUNA in lib/server/rewards.ts. */
+  streakDay: 50_000,
 } as const;
 
 /**

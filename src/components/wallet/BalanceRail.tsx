@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 import { RefreshIcon } from '@/components/shell/icons';
 import { Chip } from '@/components/ui/Chip';
 import { cn } from '@/components/ui/cn';
@@ -7,6 +9,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { chainLabel, findChain } from '@/lib/evm/chains';
 import { formatNim } from '@/lib/nimiq/units';
 import { useMiniApp } from '@/state/mini-app-provider';
+import { useRewardBalance } from '@/state/use-reward-balance';
 
 /**
  * The two stake currencies, side by side.
@@ -26,8 +29,21 @@ export function BalanceRail() {
 
 const CARD = 'relative w-[63%] shrink-0 snap-start overflow-hidden rounded-2xl p-4';
 
+/**
+ * Two different numbers live on this card, and conflating them is confusing in
+ * exactly the way money should never be: the big figure is the NIM in the
+ * player's own wallet on chain, and the line under it is what TeTe owes them
+ * and has not paid yet. Neither one substitutes for the other — you cannot
+ * spend the unpaid balance, and TeTe cannot pay out the wallet one.
+ */
 function NimBalance() {
   const { nimiq, locale, hasNimiqRpc, refreshNimiqBalance } = useMiniApp();
+  const { balance, loaded, refresh } = useRewardBalance();
+
+  const refreshAll = () => {
+    void refreshNimiqBalance();
+    void refresh();
+  };
 
   return (
     <article className={cn(CARD, 'bg-accent text-on-accent')}>
@@ -36,10 +52,10 @@ function NimBalance() {
           <p className="eyebrow text-on-accent/65">Nimiq</p>
           <p className="display mt-0.5 text-[1rem]">NIM</p>
         </div>
-        {hasNimiqRpc && nimiq.address && (
+        {nimiq.address && (
           <button
             type="button"
-            onClick={refreshNimiqBalance}
+            onClick={refreshAll}
             aria-label="Refresh NIM balance"
             disabled={nimiq.balanceStatus === 'loading'}
             className="-m-2 flex size-11 items-center justify-center rounded-full text-on-accent/50 transition-colors active:text-on-accent disabled:opacity-40"
@@ -62,7 +78,7 @@ function NimBalance() {
 
         {nimiq.address && nimiq.balanceStatus === 'unsupported' && (
           <p className="text-[0.8125rem] font-semibold leading-snug text-on-accent/65">
-            No balance API — add an RPC endpoint to read it.
+            {hasNimiqRpc ? 'Couldn’t read your wallet balance.' : 'Wallet balance unavailable here.'}
           </p>
         )}
 
@@ -70,6 +86,20 @@ function NimBalance() {
           <p className="text-[0.8125rem] font-semibold leading-snug text-on-accent/65">
             Couldn’t reach the node.
           </p>
+        )}
+
+        {nimiq.address && loaded && balance !== null && (
+          <Link
+            href="/wallet"
+            className="mt-1 flex items-baseline gap-1.5 active:opacity-70"
+          >
+            <span className="text-[0.6875rem] font-bold uppercase tracking-[0.12em] text-on-accent/60">
+              In TeTe
+            </span>
+            <span className="text-[0.875rem] font-black tabular">
+              {formatNim(balance, { locale, maximumFractionDigits: 2 })}
+            </span>
+          </Link>
         )}
       </div>
     </article>
