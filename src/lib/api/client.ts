@@ -10,6 +10,7 @@
  * deliberate, user-initiated action — never something that fires on a render.
  */
 import { signingMessage } from '@/lib/api/message';
+import { clearSentStake, recordSentStake } from '@/lib/challenges/funding-record';
 import { fundingMemo, type Challenge } from '@/lib/escrow/types';
 import { sendNim, signMessage } from '@/lib/nimiq/provider';
 
@@ -62,6 +63,9 @@ async function post<T>(path: string, payload: Record<string, unknown>): Promise<
 export interface DirectoryPlayer {
   username: string;
   address: string;
+  /** The look they chose, so tagging them shows their face and not a default. */
+  avatarSeed?: number | null;
+  photo?: string | null;
 }
 
 /** Resolve a username to an address. This is what removes the address prompt. */
@@ -89,6 +93,25 @@ export async function myDirectoryName(address: string): Promise<DirectoryPlayer 
 export async function claimUsername(address: string, username: string): Promise<DirectoryPlayer> {
   const auth = await signIntent(address, 'register');
   const body = await post<{ player: DirectoryPlayer }>('/api/players', { ...auth, username });
+  return body.player;
+}
+
+/**
+ * Publish how you look, so other players see it when they tag you.
+ *
+ * Signed, because it writes to a public identity. Omit a field to leave it
+ * alone; pass null to clear it.
+ */
+export async function saveProfileLook(
+  address: string,
+  look: { avatarSeed?: number | null; photo?: string | null },
+): Promise<DirectoryPlayer> {
+  const auth = await signIntent(address, 'profile');
+  const body = await post<{ player: DirectoryPlayer }>('/api/players', {
+    ...auth,
+    action: 'look',
+    ...look,
+  });
   return body.player;
 }
 
@@ -175,28 +198,49 @@ export async function fundNimChallenge(address: string, challenge: Challenge): P
     throw new ApiError('This challenge has no escrow address yet.', 409);
   }
 
-  await sendNim(challenge.escrowAddress, challenge.stake, fundingMemo(challenge.id));
+  const hash = await sendNim(challenge.escrowAddress, challenge.stake, fundingMemo(challenge.id));
+  // Written before the wait, not after it. If confirmation times out — or the
+  // screen is closed mid-wait — this is what stops the next tap paying again.
+  recordSentStake(challenge.id, hash);
 
+  return confirmSentStake(address, challenge.id);
+}
+
+/**
+ * Ask the server to find and record a stake that has already been sent.
+ *
+ * Separate from sending, so a confirmation that ran out of patience can be
+ * retried without moving any more money.
+ */
+export async function confirmSentStake(address: string, challengeId: string): Promise<Challenge> {
   // Sign once, before the wait — not inside it. Signing per attempt raised a
   // fresh Nimiq Pay dialog every few seconds for the whole confirmation
   // window, so funding a stake meant approving the same thing over and over
   // with no way to tell whether any of it had worked.
-  const auth = await signIntent(address, `confirm-funding:${challenge.id}`);
+  const auth = await signIntent(address, `confirm-funding:${challengeId}`);
 
   // The transaction needs a few confirmations before the server will count it
   // (see MIN_CONFIRMATIONS in lib/server/treasury.ts) — poll rather than
   // asking once and reporting failure on a transaction that only just sent.
-  const attempts = 10;
+  // The window is generous because giving up early is what leaves a paid
+  // stake looking unpaid; the signature is good for five minutes, so this
+  // stays comfortably inside it.
+  const attempts = 30;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      return await sendChallengeAction(challenge.id, auth, 'confirm-funding');
+      const challenge = await sendChallengeAction(challengeId, auth, 'confirm-funding');
+      clearSentStake(challengeId);
+      return challenge;
     } catch (cause: unknown) {
       const last = attempt === attempts - 1;
       if (last || !(cause instanceof ApiError) || cause.status !== 409) throw cause;
-      await new Promise((resolve) => setTimeout(resolve, 4000));
+      await new Promise((resolve) => setTimeout(resolve, 5000));
     }
   }
-  throw new ApiError('Funding could not be confirmed. Try again in a moment.', 409);
+  throw new ApiError(
+    'Your payment has been sent but has not been confirmed yet. Nothing is lost — reopen this challenge and check again in a minute.',
+    409,
+  );
 }
 
 export async function withdrawRewards(address: string) {
@@ -332,5 +376,37 @@ export async function fetchStatus(): Promise<BackendStatus> {
     return { store: body.store === true, escrow: body.escrow === true };
   } catch {
     return { store: false, escrow: false };
+  }
+}
+
+export type ActivityKind = 'tip-in' | 'tip-out' | 'reward' | 'check-in' | 'withdrawal' | 'payout';
+
+export interface ActivityEntry {
+  id: string;
+  kind: ActivityKind;
+  /** Signed: positive is money in, negative is money out. Luna. */
+  luna: number;
+  label: string;
+  at: number;
+  href?: string;
+}
+
+/**
+ * The server's record of what moved this player's balance.
+ *
+ * Unlike the device's own earnings list, this includes things that happened
+ * *to* them — a tip arriving, a pot settling — which no local ledger could
+ * know about. Null when the deployment records none of it.
+ */
+export async function fetchActivity(address: string): Promise<ActivityEntry[] | null> {
+  try {
+    const response = await fetch(`/api/activity?address=${encodeURIComponent(address)}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { entries?: ActivityEntry[] };
+    return Array.isArray(body.entries) ? body.entries : null;
+  } catch {
+    return null;
   }
 }

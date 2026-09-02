@@ -55,7 +55,7 @@ export const RATE_LUNA = {
  * coin costs a line, and that choice is where the reward should sit.
  * Must match COIN_LUNA in lib/server/rewards.ts, which is authoritative.
  */
-export const COIN_LUNA = 20_000; // 0.2 NIM
+export const COIN_LUNA = 100_000; // 1 NIM
 
 /**
  * A hazard hit mid-run. Costs more than a coin earns, so a miss is never

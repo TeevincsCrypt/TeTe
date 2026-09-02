@@ -38,9 +38,14 @@ export interface RpcTransaction {
   from: string;
   to: string;
   value: number;
-  data?: string;
-  senderData?: string;
-  recipientData?: string;
+  /**
+   * Attached data. Typed loosely on purpose: which field carries it, and
+   * whether it arrives as a hex string or wrapped in an object, varies between
+   * Albatross versions. Readers must cope with all of it rather than assume.
+   */
+  data?: unknown;
+  senderData?: unknown;
+  recipientData?: unknown;
   blockNumber?: number;
   timestamp?: number;
   confirmations?: number;

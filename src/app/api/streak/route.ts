@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { isNimiqAddressShape } from '@/lib/nimiq/address';
+import { recordActivity } from '@/lib/server/activity';
 import { hasDurableStore } from '@/lib/server/env';
 import { claimStreakReward, readStreak } from '@/lib/server/rewards';
 
@@ -50,6 +51,13 @@ export async function POST(request: Request) {
 
   const result = await claimStreakReward(address);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 409 });
+
+  await recordActivity(address, {
+    kind: 'check-in',
+    luna: result.credited,
+    label: `Day ${result.streak} check-in`,
+    href: '/arcade',
+  });
 
   return NextResponse.json({
     credited: result.credited,

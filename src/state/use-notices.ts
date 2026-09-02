@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   clearNotices,
   markAllRead,
+  markRead as markOne,
   readNotices,
   unreadCount,
   type Notice,
@@ -24,6 +25,7 @@ export function useNotices() {
     notices,
     unread: unreadCount(notices),
     markRead: useCallback(() => setNotices(markAllRead()), []),
+    markOneRead: useCallback((id: string) => setNotices(markOne(id)), []),
     clear: useCallback(() => setNotices(clearNotices()), []),
   };
 }

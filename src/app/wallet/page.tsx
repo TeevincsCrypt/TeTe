@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { WalletIcon } from '@/components/shell/icons';
-import { Avatar } from '@/components/ui/Avatar';
+import { PlayerFace } from '@/components/ui/PlayerFace';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { cn } from '@/components/ui/cn';
@@ -12,11 +12,14 @@ import { SlidingTabs } from '@/components/ui/SlidingTabs';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import {
   ApiError,
+  fetchActivity,
   fetchRewardBalance,
   fetchStatus,
   lookupPlayer,
   tipPlayer,
   withdrawRewards,
+  type ActivityEntry,
+  type ActivityKind,
   type DirectoryPlayer,
 } from '@/lib/api/client';
 import { EXPLORER_TX_URL } from '@/lib/config/env';
@@ -38,9 +41,10 @@ type Tab = 'earnings' | 'withdraw' | 'tip';
  * where the amount and the recipient are already known. A free-floating
  * "send some NIM to the pool" screen was a way to lose money to no purpose.
  *
- * The headline figure is the server's, not this device's. Rewards are credited
- * server-side as rounds are finished, so the local ledger below is a history
- * of rounds played, not the balance of record.
+ * Both the balance and the history are the server's, not this device's. A
+ * device-local list can only know what this phone did, which is why being
+ * tipped appeared nowhere: the money arrived and nothing on the phone had
+ * been party to it.
  */
 export default function WalletPage() {
   const [tab, setTab] = useState<Tab>('earnings');
@@ -50,12 +54,24 @@ export default function WalletPage() {
 
   const [balance, setBalance] = useState<number | null>(null);
   const [ready, setReady] = useState<boolean | null>(null);
+  const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
+
+  // Notices link straight to a tab, so honour ?tab= on arrival.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get('tab');
+    if (wanted === 'withdraw' || wanted === 'tip' || wanted === 'earnings') setTab(wanted);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!address) return;
-    const [status, earned] = await Promise.all([fetchStatus(), fetchRewardBalance(address)]);
+    const [status, earned, feed] = await Promise.all([
+      fetchStatus(),
+      fetchRewardBalance(address),
+      fetchActivity(address),
+    ]);
     setReady(status.escrow);
     setBalance(earned);
+    setActivity(feed);
   }, [address]);
 
   useEffect(() => {
@@ -105,41 +121,7 @@ export default function WalletPage() {
       />
 
       {tab === 'earnings' && (
-        <section className="mt-5">
-          {entries.length === 0 ? (
-            <div className="rounded-2xl bg-panel-2 px-5 py-10 text-center">
-              <p className="text-[0.9375rem] font-bold">Nothing earned yet</p>
-              <p className="mx-auto mt-1.5 max-w-[17rem] text-[0.8125rem] leading-relaxed text-muted">
-                Play a game in the Arcade or keep a daily streak and it lands here.
-              </p>
-            </div>
-          ) : (
-            <ul className="divide-y divide-line border-y border-line">
-              {entries.slice(0, 30).map((entry) => (
-                <li key={entry.id} className="flex items-center gap-3 py-3">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[0.875rem] font-bold">{entry.label}</span>
-                    <span className="block text-[0.6875rem] text-faint">
-                      {new Date(entry.at).toLocaleDateString(locale, {
-                        day: 'numeric',
-                        month: 'short',
-                      })}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-[0.9375rem] font-black text-accent-text tabular">
-                    +{formatNim(entry.luna, { locale, maximumFractionDigits: 3 })}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <PhaseNote className="mt-4">
-            This list is the rounds played on this device. The balance above is the
-            server&apos;s record of what you have earned and not yet withdrawn — that is the
-            one that pays out.
-          </PhaseNote>
-        </section>
+        <ActivityList activity={activity} localEntries={entries} locale={locale} />
       )}
 
       {tab === 'withdraw' && (
@@ -461,7 +443,7 @@ function TipPanel({
 
         {found && lookup === 'found' && (
           <div className="mt-3 flex items-center gap-3 rounded-xl bg-contrast p-3">
-            <Avatar address={found.address} size={36} />
+            <PlayerFace address={found.address} size={36} />
             <p className="display text-[1rem] text-on-contrast">@{found.username}</p>
           </div>
         )}
@@ -515,5 +497,117 @@ function TipPanel({
         no waiting for the chain. Signing proves the balance being spent is yours.
       </PhaseNote>
     </section>
+  );
+}
+
+const KIND_LABEL: Record<ActivityKind, string> = {
+  'tip-in': 'Tip received',
+  'tip-out': 'Tip sent',
+  reward: 'Arcade',
+  'check-in': 'Daily check-in',
+  withdrawal: 'Withdrawal',
+  payout: 'Challenge won',
+};
+
+/**
+ * Everything that moved this balance, in one list.
+ *
+ * The server's feed is preferred because it is the only one that knows about
+ * both directions — a tip you received was never something this device did.
+ * The local ledger is the fallback for a deployment that records no activity,
+ * and is labelled as the partial thing it is.
+ */
+function ActivityList({
+  activity,
+  localEntries,
+  locale,
+}: {
+  activity: ActivityEntry[] | null;
+  localEntries: { id: string; label: string; luna: number; at: number }[];
+  locale: string;
+}) {
+  const day = (at: number) =>
+    new Date(at).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+
+  if (activity === null) {
+    return (
+      <section className="mt-5">
+        {localEntries.length === 0 ? (
+          <Empty />
+        ) : (
+          <ul className="divide-y divide-line border-y border-line">
+            {localEntries.slice(0, 30).map((entry) => (
+              <li key={entry.id} className="flex items-center gap-3 py-3">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[0.875rem] font-bold">{entry.label}</span>
+                  <span className="block text-[0.6875rem] text-faint">{day(entry.at)}</span>
+                </span>
+                <span className="shrink-0 text-[0.9375rem] font-black text-accent-text tabular">
+                  +{formatNim(entry.luna, { locale, maximumFractionDigits: 3 })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <PhaseNote className="mt-4">
+          This deployment does not keep a server-side history, so this is only the
+          rounds played on this device.
+        </PhaseNote>
+      </section>
+    );
+  }
+
+  if (activity.length === 0) {
+    return (
+      <section className="mt-5">
+        <Empty />
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-5">
+      <ul className="divide-y divide-line border-y border-line">
+        {activity.map((entry) => {
+          const incoming = entry.luna >= 0;
+          return (
+            <li key={entry.id} className="flex items-center gap-3 py-3">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[0.875rem] font-bold">
+                  {KIND_LABEL[entry.kind] ?? 'Activity'}
+                </span>
+                <span className="block truncate text-[0.6875rem] text-faint">
+                  {entry.label} · {day(entry.at)}
+                </span>
+              </span>
+              <span
+                className={cn(
+                  'shrink-0 text-[0.9375rem] font-black tabular',
+                  incoming ? 'text-accent-text' : 'text-muted',
+                )}
+              >
+                {incoming ? '+' : '−'}
+                {formatNim(Math.abs(entry.luna), { locale, maximumFractionDigits: 3 })}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <PhaseNote className="mt-4">
+        Everything that moved your balance, including tips sent and received. The
+        figure above is what is left to withdraw.
+      </PhaseNote>
+    </section>
+  );
+}
+
+function Empty() {
+  return (
+    <div className="rounded-2xl bg-panel-2 px-5 py-10 text-center">
+      <p className="text-[0.9375rem] font-bold">Nothing yet</p>
+      <p className="mx-auto mt-1.5 max-w-[17rem] text-[0.8125rem] leading-relaxed text-muted">
+        Play a game in the Arcade, check in daily, or get tipped — it all lands here.
+      </p>
+    </div>
   );
 }

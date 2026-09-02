@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { recordActivity } from '@/lib/server/activity';
 import { verifySignedRequest } from '@/lib/server/auth';
 import { hasDurableStore, hasTreasury } from '@/lib/server/env';
 import { rewardsBalanceKey } from '@/lib/server/rewards';
@@ -59,6 +60,12 @@ export async function POST(request: Request) {
   await set(balanceKey(auth.address), 0);
   try {
     const hash = await payout(auth.address, owed, 'tete:rewards');
+    await recordActivity(auth.address, {
+      kind: 'withdrawal',
+      luna: -owed,
+      label: 'Withdrawn to your wallet',
+      href: '/wallet?tab=withdraw',
+    });
     return NextResponse.json({ sent: owed, transaction: hash });
   } catch (cause: unknown) {
     await set(balanceKey(auth.address), owed);

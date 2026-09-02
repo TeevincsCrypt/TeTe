@@ -6,12 +6,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { FormatArt } from '@/components/challenges/FormatArt';
 import { StateChip } from '@/components/challenges/StateChip';
 import { ChevronLeftIcon, CheckIcon } from '@/components/shell/icons';
-import { Avatar } from '@/components/ui/Avatar';
+import { PlayerFace } from '@/components/ui/PlayerFace';
 import { Button } from '@/components/ui/Button';
 import { PhaseNote } from '@/components/ui/PhaseNote';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { ConnectPanel } from '@/components/wallet/ConnectPanel';
-import { challengeAction, fetchChallenge, fundNimChallenge } from '@/lib/api/client';
+import { challengeAction, confirmSentStake, fetchChallenge, fundNimChallenge } from '@/lib/api/client';
+import { readSentStake, type SentStake } from '@/lib/challenges/funding-record';
 import { formatById } from '@/lib/challenges/types';
 import { copyText } from '@/lib/clipboard';
 import { EXPLORER_TX_URL } from '@/lib/config/env';
@@ -99,7 +100,7 @@ export default function ChallengeDetailPage() {
             <span className="flex items-center gap-1.5 text-[0.75rem] font-semibold text-on-contrast/50">
               {opponent ? (
                 <>
-                  <Avatar address={opponent.address} size={18} className="border-0" />
+                  <PlayerFace address={opponent.address} size={18} className="border-0" />
                   vs {opponent.username ? `@${opponent.username}` : shortenAddress(opponent.address)}
                 </>
               ) : mySide ? (
@@ -192,7 +193,7 @@ function ReportRow({
   return (
     <div className="flex items-center justify-between gap-3 py-1.5 text-[0.8125rem]">
       <span className="flex min-w-0 items-center gap-2 text-muted">
-        <Avatar address={side.address} size={20} className="border" />
+        <PlayerFace address={side.address} size={20} className="border" />
         <span className="truncate">
           {label}
           {side.username ? ` (@${side.username})` : ''}
@@ -383,6 +384,13 @@ function FundingCard({
   busy: string | null;
   onRun: (label: string, action: () => Promise<Challenge>) => Promise<void>;
 }) {
+  const [sent, setSent] = useState<SentStake | null>(null);
+  useEffect(() => {
+    setSent(readSentStake(challenge.id));
+    // `busy` changing means an attempt just started or finished; a finished
+    // one may have cleared the record.
+  }, [challenge.id, busy]);
+
   if (challenge.currency !== 'NIM') {
     return (
       <Sticker tone="panel">
@@ -395,24 +403,47 @@ function FundingCard({
     );
   }
 
+  // A stake already sent from this device must never be sent again just
+  // because confirmation was slow. While that record stands, the only thing
+  // on offer is checking, not paying.
+  const alreadySent = sent !== null;
+
   return (
     <Sticker tone="panel">
-      <p className="text-[0.875rem] font-bold">Fund your stake</p>
+      <p className="text-[0.875rem] font-bold">
+        {alreadySent ? 'Waiting for your stake to confirm' : 'Fund your stake'}
+      </p>
       <p className="mt-1.5 text-[1.5rem] font-black tabular">
         {formatNim(challenge.stake)}
         <span className="ml-1.5 text-[0.8125rem] text-faint">NIM</span>
       </p>
       <p className="mt-3 text-[0.75rem] leading-relaxed text-faint">
-        Nimiq Pay will ask you to approve sending this to the escrow address, tagged with
-        this challenge's reference so it is counted automatically.
+        {alreadySent
+          ? 'You have already sent this stake. It is on chain and nothing is lost — it just has not been confirmed yet. Check again in a moment.'
+          : "Nimiq Pay will ask you to approve sending this to the escrow address, tagged with this challenge's reference so it is counted automatically."}
       </p>
       <Button
         className="mt-4"
-        onClick={() => onRun('fund', () => fundNimChallenge(address, challenge))}
+        onClick={() =>
+          onRun('fund', () =>
+            alreadySent
+              ? confirmSentStake(address, challenge.id)
+              : fundNimChallenge(address, challenge),
+          )
+        }
         loading={busy === 'fund'}
       >
-        {busy === 'fund' ? 'Confirming on chain…' : 'Send stake'}
+        {busy === 'fund'
+          ? 'Confirming on chain…'
+          : alreadySent
+            ? 'Check for my payment'
+            : 'Send stake'}
       </Button>
+      {alreadySent && (
+        <p className="mt-3 break-all font-mono text-[0.6875rem] text-faint">
+          Sent: {sent.hash}
+        </p>
+      )}
       <p className="mt-3 break-all font-mono text-[0.6875rem] text-faint">
         Ref: {fundingMemo(challenge.id)}
       </p>

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { GAMES, type GameId } from '@/lib/arcade/games';
 import { isNimiqAddressShape } from '@/lib/nimiq/address';
+import { recordActivity } from '@/lib/server/activity';
 import { hasDurableStore } from '@/lib/server/env';
 import { creditGameReward, rewardsBalanceKey } from '@/lib/server/rewards';
 import { get } from '@/lib/server/store';
@@ -80,6 +81,15 @@ export async function POST(request: Request) {
     Number(body.hazards ?? 0),
   );
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 409 });
+
+  if (result.credited > 0) {
+    await recordActivity(address, {
+      kind: 'reward',
+      luna: result.credited,
+      label: GAMES.find((game) => game.id === gameId)?.name ?? gameId,
+      href: '/arcade',
+    });
+  }
 
   return NextResponse.json({ credited: result.credited, balance: result.balance });
 }

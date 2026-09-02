@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 
+import { shortenAddress } from '@/lib/nimiq/address';
+import { recordActivity } from '@/lib/server/activity';
 import { verifySignedRequest } from '@/lib/server/auth';
 import { hasDurableStore } from '@/lib/server/env';
-import { lookupUsername } from '@/lib/server/players';
+import { lookupAddress, lookupUsername } from '@/lib/server/players';
 import { tip } from '@/lib/server/rewards';
 
 export const runtime = 'nodejs';
@@ -46,6 +48,24 @@ export async function POST(request: Request) {
 
   const result = await tip(auth.address, recipient.address, luna);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  // Both sides get a line. The recipient's is the whole point: without it,
+  // being tipped is a number silently changing, with nothing to say why.
+  const sender = await lookupAddress(auth.address);
+  await Promise.all([
+    recordActivity(auth.address, {
+      kind: 'tip-out',
+      luna: -result.sent,
+      label: `@${recipient.username}`,
+      href: '/wallet?tab=tip',
+    }),
+    recordActivity(recipient.address, {
+      kind: 'tip-in',
+      luna: result.sent,
+      label: sender?.username ? `@${sender.username}` : shortenAddress(auth.address),
+      href: '/wallet',
+    }),
+  ]);
 
   return NextResponse.json({
     sent: result.sent,

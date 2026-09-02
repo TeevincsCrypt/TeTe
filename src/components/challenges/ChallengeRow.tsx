@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 import { FormatArt } from '@/components/challenges/FormatArt';
 import { StateChip } from '@/components/challenges/StateChip';
-import { Avatar } from '@/components/ui/Avatar';
+import { PlayerFace } from '@/components/ui/PlayerFace';
 import { formatById } from '@/lib/challenges/types';
 import { pot, type Challenge, type Side } from '@/lib/escrow/types';
 import { formatNim } from '@/lib/nimiq/units';
@@ -32,7 +32,7 @@ export function ChallengeRow({
           {challenge.title?.trim() || formatById(challenge.format).name}
         </p>
         <div className="mt-0.5 flex items-center gap-1.5">
-          {face && <Avatar address={face.address} size={16} className="border" />}
+          {face && <PlayerFace address={face.address} size={16} className="border" />}
           <p className="truncate text-[0.75rem] text-faint">
             {opponent
               ? `vs ${opponent.username ? `@${opponent.username}` : 'opponent'}`

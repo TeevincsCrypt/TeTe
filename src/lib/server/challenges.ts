@@ -9,6 +9,7 @@ import {
   type Challenge,
   type Side,
 } from '@/lib/escrow/types';
+import { recordActivity } from './activity';
 import { TREASURY_ADDRESS } from './env';
 import { findFunding, payout } from './treasury';
 import { get, list, push, set } from './store';
@@ -23,6 +24,19 @@ import { get, list, push, set } from './store';
 const key = (id: string) => `challenge:${id}`;
 const OPEN_LIST = 'challenges:open';
 const playerList = (address: string) => `challenges:player:${address.replace(/\s+/g, '')}`;
+/** Transaction hashes already counted as somebody's stake. */
+const CLAIMED_LIST = 'challenges:claimed-funding';
+
+async function claimedFundingHashes(): Promise<Set<string>> {
+  return new Set(await list(CLAIMED_LIST, 500));
+}
+
+async function claimFundingHash(hash: string, challengeId: string): Promise<void> {
+  // The list is the guard; the pointer is for working out later which
+  // challenge a given payment was counted against.
+  await push(CLAIMED_LIST, hash);
+  await set(`funding:claimed:${hash}`, challengeId);
+}
 
 export async function readChallenge(id: string): Promise<Challenge | null> {
   return get<Challenge>(key(id));
@@ -115,13 +129,20 @@ export async function confirmFunding(id: string, address: string): Promise<Outco
   if (!party) return fail('You are not in this challenge.', 403);
   if (party.fundingTx) return { ok: true, value: challenge };
 
-  const tx = await findFunding(id, address, challenge.stake);
+  const tx = await findFunding(id, address, challenge.stake, {
+    // Hashes already counted as somebody's stake, so an unmemoed payment
+    // cannot be claimed twice.
+    claimed: await claimedFundingHashes(),
+    // Their stake cannot predate the challenge it is paying for.
+    notBefore: challenge.createdAt,
+  });
   if (!tx) {
     return fail('No confirmed payment found yet. It may still be settling on chain.', 409);
   }
 
   party.fundingTx = tx.hash;
   party.fundedAt = Date.now();
+  await claimFundingHash(tx.hash, challenge.id);
 
   const next = fundingState(challenge);
   if (canTransition(challenge.state, next)) challenge.state = next;
@@ -176,6 +197,12 @@ export async function reportResult(id: string, address: string, winner: Side): P
     challenge.payoutTx = hash;
     challenge.state = 'settled';
     await save(challenge);
+    await recordActivity(target.address, {
+      kind: 'payout',
+      luna: pot(challenge),
+      label: `Won: ${challenge.title?.trim() || challenge.format}`,
+      href: `/challenges/${challenge.id}`,
+    });
     return { ok: true, value: challenge };
   } catch (cause: unknown) {
     await save(challenge);
