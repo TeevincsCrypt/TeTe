@@ -220,11 +220,23 @@ function NextStep({
   }
 
   if (challenge.state === 'disputed') {
+    const them_ = mySide === 'host' ? challenge.guest : challenge.host;
+    const theyOfferedVoid = Boolean(them_?.voidRequestedAt);
     return (
-      <p className="text-[0.8125rem] leading-relaxed text-negative">
-        Your reports do not match, so nothing has been paid. This one needs sorting out
-        between you.
-      </p>
+      <div>
+        <p className="mb-2.5 text-[0.8125rem] leading-relaxed text-negative">
+          {theyOfferedVoid
+            ? `You both claimed the win. ${them} now wants to call it off and take both stakes back.`
+            : `You both claimed the win, so nothing has been paid.`}
+        </p>
+        <Link
+          href={`/challenges/${challenge.id}`}
+          className="flex min-h-11 items-center justify-between rounded-xl bg-accent px-4 text-[0.875rem] font-black text-on-accent active:scale-[0.99]"
+        >
+          {theyOfferedVoid ? 'Answer them' : 'Sort it out'}
+          <ChevronRightIcon className="size-4" />
+        </Link>
+      </div>
     );
   }
 

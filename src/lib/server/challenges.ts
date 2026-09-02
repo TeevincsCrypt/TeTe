@@ -1,6 +1,7 @@
 import 'server-only';
 
 import {
+  bothVoided,
   canTransition,
   fundingMemo,
   fundingState,
@@ -192,15 +193,92 @@ export async function confirmFunding(
 }
 
 /**
+ * Send the pot to one side and close the challenge.
+ *
+ * Paid first, recorded second, always — a failed send then leaves the
+ * challenge payable rather than marked settled with nothing sent.
+ */
+async function payWinner(
+  challenge: Challenge,
+  winningSide: Side,
+  resolvedBy?: Challenge['resolvedBy'],
+): Promise<Outcome<Challenge>> {
+  const target = winningSide === 'host' ? challenge.host : challenge.guest;
+  if (!target) return fail('The winning player is missing.', 500);
+
+  try {
+    const hash = await payout(target.address, pot(challenge), `tete:payout:${challenge.id}`);
+    challenge.winner = winningSide;
+    challenge.payoutTx = hash;
+    challenge.state = 'settled';
+    if (resolvedBy) challenge.resolvedBy = resolvedBy;
+    await save(challenge);
+    await recordActivity(target.address, {
+      kind: 'payout',
+      luna: pot(challenge),
+      label: `Won: ${challenge.title?.trim() || challenge.format}`,
+      href: `/challenges/${challenge.id}`,
+    });
+    return { ok: true, value: challenge };
+  } catch (cause: unknown) {
+    await save(challenge);
+    return fail(cause instanceof Error ? cause.message : 'The payout failed.', 502);
+  }
+}
+
+/**
+ * Give every staked side its own stake back.
+ *
+ * Each refund goes to the address on the challenge, never to whoever the chain
+ * says sent the money — a stake can arrive from any account the player's wallet
+ * happened to be using, and paying that account back would send it somewhere
+ * they never asked for. Whatever did come back is recorded even on failure, so
+ * a retry cannot pay twice.
+ */
+async function refundStakes(challenge: Challenge, label: string): Promise<Outcome<true>> {
+  for (const who of ['host', 'guest'] as const) {
+    const party = who === 'host' ? challenge.host : challenge.guest;
+    if (!party?.fundingTx || party.refundTx) continue;
+    try {
+      party.refundTx = await payout(party.address, challenge.stake, `tete:refund:${challenge.id}`);
+      await recordActivity(party.address, {
+        kind: 'payout',
+        luna: challenge.stake,
+        label: `${label}: ${challenge.title?.trim() || challenge.format}`,
+        href: `/challenges/${challenge.id}`,
+      });
+    } catch (cause: unknown) {
+      await save(challenge);
+      return fail(
+        cause instanceof Error
+          ? `Could not refund the stakes: ${cause.message}`
+          : 'Could not refund the stakes.',
+        502,
+      );
+    }
+  }
+  return { ok: true, value: true };
+}
+
+/**
  * Report who won, and settle when both sides agree.
  *
- * Conflicting reports move to `disputed` and pay nobody. Choosing a winner
+ * Conflicting reports move to `disputed` and pay nobody: choosing a winner
  * from contradictory claims is the one decision that must not be automated.
+ * But a dispute is not a dead end, and reporting stays open while one is
+ * running — most disagreements are a mis-tap or two people meaning different
+ * things by "the match", and either player changing their answer settles it
+ * here and now. Changing your answer to your opponent's is conceding, and
+ * concedes the pot with it; that is the player's own money to give.
  */
 export async function reportResult(id: string, address: string, winner: Side): Promise<Outcome<Challenge>> {
   const challenge = await readChallenge(id);
   if (!challenge) return fail('No such challenge.', 404);
-  if (challenge.state !== 'funded' && challenge.state !== 'reported') {
+  if (
+    challenge.state !== 'funded' &&
+    challenge.state !== 'reported' &&
+    challenge.state !== 'disputed'
+  ) {
     return fail(`Results cannot be reported while a challenge is ${challenge.state}.`, 409);
   }
 
@@ -218,6 +296,7 @@ export async function reportResult(id: string, address: string, winner: Side): P
   const outcome = resolveReports(challenge);
   if (outcome === 'conflict') {
     challenge.state = 'disputed';
+    challenge.disputedAt ??= Date.now();
     await save(challenge);
     return { ok: true, value: challenge };
   }
@@ -226,29 +305,81 @@ export async function reportResult(id: string, address: string, winner: Side): P
     return { ok: true, value: challenge };
   }
 
-  // Agreed. Pay the winner, then record it — in that order, so a failed send
-  // leaves the challenge payable rather than marked settled with no money sent.
-  const winningSide = winner;
-  const target = winningSide === 'host' ? challenge.host : challenge.guest;
-  if (!target) return fail('The winning player is missing.', 500);
+  return payWinner(challenge, winner, challenge.state === 'disputed' ? 'agreement' : undefined);
+}
 
-  try {
-    const hash = await payout(target.address, pot(challenge), `tete:payout:${challenge.id}`);
-    challenge.winner = winningSide;
-    challenge.payoutTx = hash;
-    challenge.state = 'settled';
-    await save(challenge);
-    await recordActivity(target.address, {
-      kind: 'payout',
-      luna: pot(challenge),
-      label: `Won: ${challenge.title?.trim() || challenge.format}`,
-      href: `/challenges/${challenge.id}`,
-    });
-    return { ok: true, value: challenge };
-  } catch (cause: unknown) {
-    await save(challenge);
-    return fail(cause instanceof Error ? cause.message : 'The payout failed.', 502);
+/**
+ * Offer to call a disputed match off, with both stakes going back.
+ *
+ * The way out when neither player will move and neither is obviously wrong —
+ * a match that never finished, a disconnect, a genuine draw. It takes both
+ * sides: one player asking is a proposal the other can accept by asking too,
+ * and nothing moves until they have. A single side being able to void would
+ * hand every loser a way out of losing.
+ */
+export async function voidDispute(id: string, address: string): Promise<Outcome<Challenge>> {
+  const challenge = await readChallenge(id);
+  if (!challenge) return fail('No such challenge.', 404);
+  if (challenge.state !== 'disputed') {
+    return fail(`Only a disputed challenge can be called off this way.`, 409);
   }
+
+  const side: Side | null =
+    challenge.host.address === address ? 'host' : challenge.guest?.address === address ? 'guest' : null;
+  if (!side) return fail('You are not in this challenge.', 403);
+
+  const party = side === 'host' ? challenge.host : challenge.guest;
+  if (!party) return fail('You are not in this challenge.', 403);
+
+  party.voidRequestedAt ??= Date.now();
+  if (!bothVoided(challenge)) {
+    // Waiting on the other side. Saved so they can see the offer standing.
+    await save(challenge);
+    return { ok: true, value: challenge };
+  }
+
+  const refunded = await refundStakes(challenge, 'Refund');
+  if (!refunded.ok) return refunded;
+
+  challenge.state = 'refunded';
+  challenge.resolvedBy = 'void';
+  await save(challenge);
+  return { ok: true, value: challenge };
+}
+
+/**
+ * The operator's decision on a dispute that the players could not end.
+ *
+ * Deliberately the only backstop, and deliberately not a timer. Releasing a
+ * disputed pot back to both players after some deadline would be simpler and
+ * is worse: whoever lost could dispute an honest result, wait, and get their
+ * stake back every time, which costs nothing and makes reporting honestly
+ * pointless. So a stuck dispute waits for a person — reachable only with the
+ * admin token, never by a player.
+ */
+export async function resolveDispute(
+  id: string,
+  outcome: Side | 'void',
+  note?: string,
+): Promise<Outcome<Challenge>> {
+  const challenge = await readChallenge(id);
+  if (!challenge) return fail('No such challenge.', 404);
+  if (challenge.state !== 'disputed') {
+    return fail(`Only a disputed challenge needs resolving; this one is ${challenge.state}.`, 409);
+  }
+
+  if (note) challenge.resolutionNote = note;
+
+  if (outcome === 'void') {
+    const refunded = await refundStakes(challenge, 'Refund');
+    if (!refunded.ok) return refunded;
+    challenge.state = 'refunded';
+    challenge.resolvedBy = 'operator';
+    await save(challenge);
+    return { ok: true, value: challenge };
+  }
+
+  return payWinner(challenge, outcome, 'operator');
 }
 
 
@@ -390,26 +521,8 @@ export async function cancelChallenge(id: string, address: string): Promise<Outc
     return fail('A result has already been reported. Settle it rather than calling it off.', 409);
   }
 
-  for (const who of ['host', 'guest'] as const) {
-    const party = who === 'host' ? challenge.host : challenge.guest;
-    if (!party?.fundingTx || party.refundTx) continue;
-    try {
-      party.refundTx = await payout(party.address, challenge.stake, `tete:refund:${challenge.id}`);
-      await recordActivity(party.address, {
-        kind: 'payout',
-        luna: challenge.stake,
-        label: `Refund: ${challenge.title?.trim() || challenge.format}`,
-        href: `/challenges/${challenge.id}`,
-      });
-    } catch (cause: unknown) {
-      // Record whatever did come back, so a retry does not send it twice.
-      await save(challenge);
-      return fail(
-        cause instanceof Error ? `Could not refund the stakes: ${cause.message}` : 'Could not refund the stakes.',
-        502,
-      );
-    }
-  }
+  const refunded = await refundStakes(challenge, 'Refund');
+  if (!refunded.ok) return refunded;
 
   challenge.state = 'refunded';
   challenge.cancelledBy = side;

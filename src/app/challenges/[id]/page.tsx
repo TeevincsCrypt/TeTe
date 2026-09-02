@@ -363,14 +363,61 @@ function ChallengeAction({
   }
 
   if (challenge.state === 'disputed') {
+    const me = mySide === 'host' ? challenge.host : challenge.guest;
+    const them = mySide === 'host' ? challenge.guest : challenge.host;
+    const theirSide: Side = mySide === 'host' ? 'guest' : 'host';
+    const iSaid = me?.reported;
+    const theySaid = them?.reported;
+    const theyOfferedVoid = Boolean(them?.voidRequestedAt);
+    const iOfferedVoid = Boolean(me?.voidRequestedAt);
+
     return (
-      <Sticker tone="panel">
-        <p className="text-[0.875rem] font-bold text-negative">Disputed</p>
-        <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted">
-          Your reports do not agree, so nothing has been paid. There is no automatic
-          resolution built yet — this needs a human to look at it.
-        </p>
-      </Sticker>
+      <div className="space-y-2.5">
+        <Sticker tone="panel">
+          <p className="text-[0.875rem] font-bold text-negative">You disagree</p>
+          <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-muted">
+            You said <b className="text-text">{iSaid === mySide ? 'you' : 'they'} won</b>. They
+            said <b className="text-text">{theySaid === theirSide ? 'they' : 'you'} won</b>. The
+            pot stays in escrow until this is settled — nothing has been paid to anyone.
+          </p>
+        </Sticker>
+
+        {/* Most disagreements are a mis-tap or two people meaning different
+            things by "the match". Changing your answer is the way out, and
+            settles it the moment the two agree. */}
+        <Button
+          variant="contrast"
+          onClick={() =>
+            onRun('concede', () =>
+              challengeAction(address, challenge.id, 'report', { winner: theirSide }),
+            )
+          }
+          loading={busy === 'concede'}
+        >
+          {theySaid === theirSide ? 'They were right — they won' : 'Change my answer'}
+        </Button>
+
+        <Button
+          variant="outline"
+          onClick={() => onRun('void', () => challengeAction(address, challenge.id, 'void'))}
+          loading={busy === 'void'}
+          disabled={iOfferedVoid}
+        >
+          {iOfferedVoid
+            ? 'You asked to call it off'
+            : theyOfferedVoid
+              ? 'Agree: call it off, both refunded'
+              : 'Call it off, both refunded'}
+        </Button>
+
+        <PhaseNote>
+          {theyOfferedVoid && !iOfferedVoid
+            ? 'They have offered to call it off and take both stakes back. Agreeing refunds you both.'
+            : iOfferedVoid
+              ? 'Waiting for them to agree. Both stakes come back the moment they do.'
+              : 'Calling it off needs you both to agree, so neither side can walk away from a result. If you cannot agree at all, TeTe can step in and decide.'}
+        </PhaseNote>
+      </div>
     );
   }
 
@@ -382,6 +429,36 @@ function ChallengeAction({
         <p className={`mt-1 text-[0.8125rem] ${won ? 'text-on-accent/75' : 'text-muted'}`}>
           {won ? 'The pot has been sent to your wallet.' : 'The pot was paid to your opponent.'}
         </p>
+        {challenge.resolvedBy === 'operator' && (
+          <p className={`mt-2 text-[0.75rem] leading-relaxed ${won ? 'text-on-accent/70' : 'text-faint'}`}>
+            Decided by TeTe after the dispute.
+            {challenge.resolutionNote ? ` “${challenge.resolutionNote}”` : ''}
+          </p>
+        )}
+      </Sticker>
+    );
+  }
+
+  // A dispute that ended in both stakes going back, or a challenge called off.
+  if (challenge.state === 'refunded') {
+    const me = mySide === 'host' ? challenge.host : challenge.guest;
+    return (
+      <Sticker tone="panel">
+        <p className="text-[0.875rem] font-bold">
+          {challenge.resolvedBy ? 'Called off — nobody won' : 'Called off'}
+        </p>
+        <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted">
+          {me?.refundTx
+            ? 'Your stake has been sent back to your wallet.'
+            : 'Nothing of yours was staked, so there was nothing to send back.'}
+        </p>
+        {challenge.resolvedBy === 'operator' && (
+          <p className="mt-2 text-[0.75rem] leading-relaxed text-faint">
+            Decided by TeTe after the dispute.
+            {challenge.resolutionNote ? ` “${challenge.resolutionNote}”` : ''}
+          </p>
+        )}
+        {me?.refundTx && <TxRef hash={me.refundTx} />}
       </Sticker>
     );
   }

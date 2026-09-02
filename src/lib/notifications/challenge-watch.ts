@@ -74,10 +74,42 @@ function opponentLabel(challenge: Challenge, mySide: Side): string {
   return opponent.username ? `@${opponent.username}` : shortenAddress(opponent.address);
 }
 
+/**
+ * What this device last saw of a challenge.
+ *
+ * The state alone is not enough once a dispute is running: an opponent
+ * changing their answer or offering to call it off both matter to the other
+ * player and neither moves the state, so they would pass in silence — which
+ * is the whole failure a dispute screen exists to avoid. While disputed, the
+ * signature carries what each side is claiming and asking for as well.
+ */
+function signatureOf(challenge: Challenge): string {
+  if (challenge.state !== 'disputed') return challenge.state;
+  const mark = (party?: { reported?: Side; voidRequestedAt?: number }) =>
+    `${party?.reported ?? '-'}${party?.voidRequestedAt ? 'v' : ''}`;
+  return `disputed:${mark(challenge.host)}:${mark(challenge.guest)}`;
+}
+
 /** What to say, or null when this transition is the viewer's own action. */
-function describe(challenge: Challenge, mySide: Side): string | null {
+function describe(challenge: Challenge, mySide: Side, previous: string): string | null {
   const who = opponentLabel(challenge, mySide);
   const me = mySide === 'host' ? challenge.host : challenge.guest;
+
+  if (challenge.state === 'disputed') {
+    const them = mySide === 'host' ? challenge.guest : challenge.host;
+    // Arriving in a dispute is worth saying once; after that only what the
+    // other side newly did is news, and only to the side that did not do it.
+    if (!previous.startsWith('disputed')) {
+      return 'You both claimed the win — nothing has been paid. Sort it out.';
+    }
+    // Positional: `disputed:<host>:<guest>`, so their half is the other one.
+    const parts = previous.split(':');
+    const theirPrevious = mySide === 'host' ? parts[2] : parts[1];
+    if (them?.voidRequestedAt && !theirPrevious?.includes('v')) {
+      return `${who} wants to call it off and take both stakes back`;
+    }
+    return `${who} changed their answer`;
+  }
 
   switch (challenge.state) {
     case 'accepted':
@@ -94,12 +126,16 @@ function describe(challenge: Challenge, mySide: Side): string | null {
       return 'Both stakes are in — say who won when you have played';
     case 'reported':
       return me?.reported ? null : `${who} reported a result — your turn`;
-    case 'disputed':
-      return 'Reports do not match. This one is disputed and needs a look.';
     case 'settled':
       return challenge.winner === mySide
         ? 'You won! The payout has been sent.'
         : `Settled — the pot went to ${who}`;
+    case 'refunded':
+      // Only worth saying when a dispute ended this way; an ordinary call-off
+      // already tells whoever did it, and the other side sees the refund.
+      return challenge.resolvedBy
+        ? 'Called off — your stake has been sent back'
+        : null;
     default:
       return null;
   }
@@ -129,6 +165,7 @@ export function checkChallengeUpdates(challenges: Challenge[], address: string):
     if (!mySide) continue;
 
     const previous = seen[challenge.id];
+    const signature = signatureOf(challenge);
 
     if (previous === undefined) {
       // New to this device. Worth announcing only when it is waiting on them:
@@ -142,16 +179,16 @@ export function checkChallengeUpdates(challenges: Challenge[], address: string):
           `/challenges/${challenge.id}`,
         );
       }
-    } else if (previous !== challenge.state) {
-      const message = describe(challenge, mySide);
+    } else if (previous !== signature) {
+      const message = describe(challenge, mySide, previous);
       if (message) {
         const label = challenge.title?.trim() || challenge.format;
         pushNotice('result', message, label, `/challenges/${challenge.id}`);
       }
     }
 
-    if (previous !== challenge.state) {
-      seen[challenge.id] = challenge.state;
+    if (previous !== signature) {
+      seen[challenge.id] = signature;
       changed = true;
     }
   }
