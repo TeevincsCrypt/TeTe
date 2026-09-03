@@ -4,17 +4,21 @@ import type { ReactNode } from 'react';
 /**
  * Cover art for each challenge format.
  *
- * Two kinds, by necessity. CODM, PUBG, Free Fire and eFootball stay original
- * illustrations: real reference photos for these were checked directly, and
- * three are the publisher's own trademarked logo art, the fourth Konami's
- * official promotional image carrying a real athlete's likeness — not
- * something a public repository ships, so each mark below evokes the
- * *genre* instead. Chess and Trivia are real photos: plain stock imagery
- * with no logo or license mark in either, so there was nothing to redraw.
+ * Two kinds, by necessity. CODM, PUBG and Free Fire stay original
+ * illustrations: every reference photo offered for these turned out to be a
+ * specific character illustration lifted from that game's own promotional
+ * art — a copyright the publisher holds on the drawing itself, which taking
+ * the logo or wordmark off does not clear — so each mark below evokes the
+ * *genre* instead. Chess, Trivia, eFootball and Custom are real photos: each
+ * one checked directly and found to be generic — a stock chess set, a
+ * marquee sign, a stadium crowd with no players or branding in frame, a
+ * plain typographic graphic — nothing tying it to a specific owned work.
  */
 const PHOTO: Partial<Record<string, string>> = {
   chess: '/format-art/chess.jpg',
   trivia: '/format-art/trivia.jpg',
+  efootball: '/format-art/efootball.jpg',
+  custom: '/format-art/custom.jpg',
 };
 
 const ART: Record<string, { from: string; to: string; art: ReactNode }> = {
