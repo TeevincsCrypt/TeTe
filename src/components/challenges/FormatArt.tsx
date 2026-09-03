@@ -11,7 +11,9 @@ import type { ReactNode } from 'react';
  */
 const ART: Record<string, { from: string; to: string; art: ReactNode }> = {
   codm: {
-    from: '#33422c', to: '#0f1410',
+    // Cold steel rather than jungle olive — closer to the tactical grey-blue
+    // the real title trades on, without touching its actual mark.
+    from: '#3b4750', to: '#0a0e12',
     art: (
       <>
         <circle cx="50" cy="36" r="17" strokeWidth="2.5" opacity="0.9" />
@@ -22,7 +24,8 @@ const ART: Record<string, { from: string; to: string; art: ReactNode }> = {
     ),
   },
   pubg: {
-    from: '#43391f', to: '#14110a',
+    // Open-sky dusk blue, not desert brown — battle royale's actual mood.
+    from: '#2d4f66', to: '#0a141b',
     art: (
       <>
         <path d="M32 16h36l-6 20H38Z" strokeWidth="2.5" strokeLinejoin="round" />
@@ -33,7 +36,9 @@ const ART: Record<string, { from: string; to: string; art: ReactNode }> = {
     ),
   },
   freefire: {
-    from: '#4a2c1a', to: '#170e08',
+    // Neon violet, matching the real branding's palette — the name says
+    // fire, the actual art has never been orange.
+    from: '#402458', to: '#140a1f',
     art: (
       <>
         <path
@@ -45,7 +50,9 @@ const ART: Record<string, { from: string; to: string; art: ReactNode }> = {
     ),
   },
   efootball: {
-    from: '#1d4030', to: '#0a150f',
+    // Blue into magenta — the pitch-green treatment read as generic sports
+    // rather than this specific, very colourful franchise.
+    from: '#1c3f6e', to: '#2a123f',
     art: (
       <>
         <circle cx="50" cy="38" r="18" strokeWidth="2.5" />
@@ -56,7 +63,8 @@ const ART: Record<string, { from: string; to: string; art: ReactNode }> = {
     ),
   },
   chess: {
-    from: '#31291f', to: '#100e0b',
+    // Near-black, the way a set is actually photographed and lit.
+    from: '#241e17', to: '#080706',
     art: (
       <>
         <circle cx="50" cy="22" r="7" strokeWidth="2.5" />
