@@ -20,11 +20,6 @@ Opening the link in a normal browser also works, but it shows you a
 "open this in Nimiq Pay" screen instead of the app — there's no wallet to
 connect to out there.
 
-**Trying it out without risking real funds?** Nimiq Pay has a hidden dev
-menu: open its own app menu and long-press the settings button for about 10
-seconds, then choose **Testnet**. A **Get free NIM** button then appears
-right on TeTe's empty-state screens — 110,000 test NIM per request, no real
-money involved.
 
 ---
 
