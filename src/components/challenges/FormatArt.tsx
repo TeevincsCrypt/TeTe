@@ -1,14 +1,22 @@
+import Image from 'next/image';
 import type { ReactNode } from 'react';
 
 /**
  * Cover art for each challenge format.
  *
- * These are original illustrations, not game logos. CODM, PUBG, Free Fire and
- * the rest are trademarks of their publishers, and shipping their artwork —
- * even as a thumbnail — is not something a public repository should do. Each
- * mark below evokes the *genre* instead: a scope for the shooters, a drop for
- * battle royale, a ball for football.
+ * Two kinds, by necessity. CODM, PUBG, Free Fire and eFootball stay original
+ * illustrations: real reference photos for these were checked directly, and
+ * three are the publisher's own trademarked logo art, the fourth Konami's
+ * official promotional image carrying a real athlete's likeness — not
+ * something a public repository ships, so each mark below evokes the
+ * *genre* instead. Chess and Trivia are real photos: plain stock imagery
+ * with no logo or license mark in either, so there was nothing to redraw.
  */
+const PHOTO: Partial<Record<string, string>> = {
+  chess: '/format-art/chess.jpg',
+  trivia: '/format-art/trivia.jpg',
+};
+
 const ART: Record<string, { from: string; to: string; art: ReactNode }> = {
   codm: {
     // Cold steel rather than jungle olive — closer to the tactical grey-blue
@@ -110,6 +118,15 @@ export function FormatArt({
   className?: string;
   rounded?: string;
 }) {
+  const photo = PHOTO[id];
+  if (photo) {
+    return (
+      <span className={`relative block overflow-hidden ${rounded} ${className ?? ''}`}>
+        <Image src={photo} alt="" fill sizes="240px" className="object-cover" />
+      </span>
+    );
+  }
+
   const art = ART[id] ?? ART.custom;
   if (!art) return null;
 
