@@ -87,16 +87,21 @@ export function RushGame({
           const kind: Obstacle = kindRoll < 0.4 ? 'barrier' : kindRoll < 0.72 ? 'rail' : 'train';
           s.things.push({ z: s.spawnZ, lane, kind, gone: false });
         }
-      } else if (roll < 0.86) {
-        // A run of coins down one lane — the reason to leave a safe line.
+      } else if (roll < 0.68) {
+        // A short run of coins down one lane — still the reason to leave a
+        // safe line, but three rather than five and half as often: the
+        // original run left almost no stretch of track without one.
         const lane = lanes[Math.floor(Math.random() * 3)] ?? 0;
-        for (let i = 0; i < 5; i += 1) {
-          s.things.push({ z: s.spawnZ + i * 2.2, lane, kind: 'coin', gone: false });
+        for (let i = 0; i < 3; i += 1) {
+          s.things.push({ z: s.spawnZ + i * 2.4, lane, kind: 'coin', gone: false });
         }
-      } else {
+      } else if (roll < 0.8) {
         const lane = lanes[Math.floor(Math.random() * 3)] ?? 0;
         s.things.push({ z: s.spawnZ, lane, kind: 'hazard', gone: false });
       }
+      // The remaining share spawns nothing this cycle — a clear stretch of
+      // track, so the lane is occasionally just a lane rather than always
+      // holding something to react to.
 
       s.spawnZ += 12 + Math.random() * 10;
     }
