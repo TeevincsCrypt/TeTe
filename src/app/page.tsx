@@ -13,6 +13,7 @@ import {
   StarIcon,
   SwordsIcon,
   TrophyIcon,
+  XIcon,
 } from '@/components/shell/icons';
 import { Marquee } from '@/components/ui/Marquee';
 import { BalanceRail } from '@/components/wallet/BalanceRail';
@@ -149,6 +150,17 @@ export default function HomePage() {
       <div className="-mx-4 mt-9 border-y border-line py-2.5">
         <Marquee items={TICKER} />
       </div>
+
+      <footer className="mt-6 pb-2 text-center">
+        <a
+          href="https://x.com/teteonnimiq"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-[0.75rem] font-bold text-faint active:opacity-60"
+        >
+          Follow on <XIcon className="size-3.5" />
+        </a>
+      </footer>
     </div>
   );
 }
