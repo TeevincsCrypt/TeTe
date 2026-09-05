@@ -2,6 +2,8 @@
 
 import { useRef } from 'react';
 
+import { sfxHazard, sfxHit } from '@/lib/arcade/sfx';
+
 import { GameCanvas, type Frame } from './GameCanvas';
 import { drawBomb, drawFruit, type FruitKind } from './sprites';
 
@@ -87,10 +89,12 @@ export function SliceGame({ onFinish }: { onFinish: (score: number) => void }) {
           if (t.bomb) {
             s.lives -= 1;
             s.combo = 0;
+            sfxHazard();
           } else {
             s.combo = s.elapsed - s.comboAt < 0.55 ? s.combo + 1 : 1;
             s.comboAt = s.elapsed;
             s.score += s.combo;
+            sfxHit();
           }
         }
       }
@@ -98,7 +102,7 @@ export function SliceGame({ onFinish }: { onFinish: (score: number) => void }) {
       // A miss only costs a life for a real target, never a bomb.
       s.targets = s.targets.filter((t) => {
         if (t.y - t.r > height + 60) {
-          if (!t.hit && !t.bomb) s.lives -= 1;
+          if (!t.hit && !t.bomb) { s.lives -= 1; sfxHazard(); }
           return false;
         }
         return !(t.hit && t.y > height + 60);

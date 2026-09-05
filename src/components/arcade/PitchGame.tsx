@@ -2,6 +2,8 @@
 
 import { useRef } from 'react';
 
+import { sfxCoin, sfxGoal, sfxHazard } from '@/lib/arcade/sfx';
+
 import { GameCanvas, type Frame } from './GameCanvas';
 import { drawBall, drawCoin, drawFootballer, drawHazard } from './sprites';
 
@@ -178,8 +180,8 @@ export function PitchGame({
         if (pickup.taken) continue;
         if (Math.hypot(pickup.x - s.bx, pickup.y - s.by) < 20) {
           pickup.taken = true;
-          if (pickup.kind === 'coin') { s.coins += 1; s.flash = 1; }
-          else { s.hazards += 1; s.flash = -1; }
+          if (pickup.kind === 'coin') { s.coins += 1; s.flash = 1; sfxCoin(); }
+          else { s.hazards += 1; s.flash = -1; sfxHazard(); }
         }
       }
 
@@ -188,6 +190,7 @@ export function PitchGame({
           s.message = 'Off the wall';
           s.messageAt = performance.now();
           s.live = false;
+          sfxHazard();
           nextShot();
         }
       }
@@ -197,13 +200,16 @@ export function PitchGame({
         s.message = 'Keeper saves';
         s.messageAt = performance.now();
         s.live = false;
+        sfxHazard();
         nextShot();
       } else if (s.by < goalY + 6) {
         if (s.bx > goalX && s.bx < goalX + goalW) {
           s.goals += 1;
           s.message = 'GOAL';
+          sfxGoal();
         } else {
           s.message = 'Wide';
+          sfxHazard();
         }
         s.messageAt = performance.now();
         s.live = false;
@@ -214,6 +220,7 @@ export function PitchGame({
         s.message = 'Short';
         s.messageAt = performance.now();
         s.live = false;
+        sfxHazard();
         nextShot();
       }
     }

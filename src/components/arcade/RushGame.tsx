@@ -2,6 +2,9 @@
 
 import { useRef } from 'react';
 
+import { sfxCoin, sfxHazard, sfxJump } from '@/lib/arcade/sfx';
+import { useCharacter } from '@/state/use-character';
+
 import { GameCanvas, type Frame } from './GameCanvas';
 import { drawCoin, drawHazard, drawRunnerBack } from './sprites';
 
@@ -53,6 +56,7 @@ export function RushGame({
 }: {
   onFinish: (score: number, coins: number, hazards: number) => void;
 }) {
+  const { character } = useCharacter();
   const state = useRef<State>({ ...START, started: false });
   const done = useRef(false);
 
@@ -148,8 +152,10 @@ export function RushGame({
         } else if (Math.abs(s.swipeY) > THRESHOLD) {
           if (s.swipeY < 0 && s.air <= 0 && s.roll <= 0) {
             s.airV = 8.4;
+            sfxJump();
           } else if (s.swipeY > 0 && s.air <= 0) {
             s.roll = 0.62;
+            sfxJump();
           }
           s.swiped = true;
         }
@@ -185,10 +191,12 @@ export function RushGame({
           thing.gone = true;
           s.coins += 1;
           s.flash = 1;
+          sfxCoin();
         } else if (thing.kind === 'hazard') {
           thing.gone = true;
           s.hazards += 1;
           s.flash = -1;
+          sfxHazard();
         } else if (thing.kind === 'barrier') {
           if (s.air < 0.35) finish();
         } else if (thing.kind === 'rail') {
@@ -311,6 +319,8 @@ export function RushGame({
       me.scale * 2.1,
       s.stride,
       s.roll > 0 ? 2 : s.air > 0.1 ? 1 : 0,
+      character.body,
+      character.accent,
     );
 
     // ---- hud ---------------------------------------------------------------

@@ -2,6 +2,9 @@
 
 import { useRef } from 'react';
 
+import { sfxCoin, sfxHazard, sfxHit, sfxShoot } from '@/lib/arcade/sfx';
+import { useCharacter } from '@/state/use-character';
+
 import { GameCanvas, type Frame } from './GameCanvas';
 import { drawCannon, drawCoin, drawHazard, drawInvader } from './sprites';
 
@@ -51,6 +54,7 @@ export function InvasionGame({
 }: {
   onFinish: (score: number, coins: number, hazards: number) => void;
 }) {
+  const { character } = useCharacter();
   const state = useRef<State>({ ...START, started: false });
   const done = useRef(false);
 
@@ -143,6 +147,7 @@ export function InvasionGame({
       if (s.cooldown <= 0) {
         s.cooldown = 0.34;
         s.shots.push({ x: cannonPx, y: groundY - 26, vy: -520, mine: true });
+        sfxShoot();
       }
 
       // ---- invaders drop bombs --------------------------------------------
@@ -177,6 +182,7 @@ export function InvasionGame({
             inv.alive = false;
             shot.y = -999;
             s.downed += 1;
+            sfxHit();
             // The back ranks are the ones carrying something worth catching.
             const roll = Math.random();
             if (roll < 0.14 + inv.rank * 0.06) {
@@ -194,6 +200,7 @@ export function InvasionGame({
           s.hazards += 1;
           s.lives -= 1;
           s.hitFlash = 1;
+          sfxHazard();
           if (s.lives <= 0) finish();
         }
       }
@@ -204,8 +211,8 @@ export function InvasionGame({
       for (const drop of s.drops) drop.y += 150 * dt;
       s.drops = s.drops.filter((drop) => {
         if (drop.y > groundY - 24 && Math.abs(drop.x - cannonPx) < 26) {
-          if (drop.kind === 'coin') s.coins += 1;
-          else s.hazards += 1;
+          if (drop.kind === 'coin') { s.coins += 1; sfxCoin(); }
+          else { s.hazards += 1; sfxHazard(); }
           s.hitFlash = drop.kind === 'coin' ? -1 : 1;
           return false;
         }
@@ -260,7 +267,7 @@ export function InvasionGame({
     ctx.fillStyle = 'rgba(200,255,77,0.45)';
     ctx.fillRect(0, groundY + 12, width, 2);
 
-    drawCannon(ctx, cannonPx, groundY, 42);
+    drawCannon(ctx, cannonPx, groundY, 42, character.body, character.accent);
 
     // ---- hud ---------------------------------------------------------------
     ctx.fillStyle = '#eef2ea';
