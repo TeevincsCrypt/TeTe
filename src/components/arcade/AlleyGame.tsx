@@ -2,6 +2,9 @@
 
 import { useRef } from 'react';
 
+import { sfxCoin, sfxHazard, sfxHit } from '@/lib/arcade/sfx';
+import { useCharacter } from '@/state/use-character';
+
 import { GameCanvas, type Frame } from './GameCanvas';
 import { drawBrawler, drawCoin, drawHazard, drawStreetItem } from './sprites';
 
@@ -55,6 +58,7 @@ export function AlleyGame({
 }: {
   onFinish: (score: number, coins: number, hazards: number) => void;
 }) {
+  const { character } = useCharacter();
   const state = useRef<State>({ ...START, started: false });
   const done = useRef(false);
 
@@ -124,6 +128,7 @@ export function AlleyGame({
           s.weaponUses = item.kind === 'crate' ? 3 : 6;
           s.strike = 0;
           s.strikeCool = 0.15;
+          sfxCoin();
         } else {
           // A connecting swing lands on everyone in front of you.
           let connected = false;
@@ -150,6 +155,7 @@ export function AlleyGame({
               }
             }
           }
+          if (connected) sfxHit();
           if (connected && s.weapon !== 'none') {
             s.weaponUses -= 1;
             if (s.weaponUses <= 0) s.weapon = 'none';
@@ -242,6 +248,7 @@ export function AlleyGame({
             s.hazards += 1;
             s.flash = -1;
             s.px -= Math.sign(dx) * 22;
+            sfxHazard();
             if (s.hp <= 0) finish();
           }
         }
@@ -252,8 +259,8 @@ export function AlleyGame({
       for (const drop of s.drops) drop.life -= dt;
       s.drops = s.drops.filter((drop) => {
         if (Math.hypot(drop.x - s.px, drop.y - s.py) < 26) {
-          if (drop.kind === 'coin') { s.coins += 1; s.flash = 1; }
-          else { s.hazards += 1; s.flash = -1; }
+          if (drop.kind === 'coin') { s.coins += 1; s.flash = 1; sfxCoin(); }
+          else { s.hazards += 1; s.flash = -1; sfxHazard(); }
           return false;
         }
         return drop.life > 0;
@@ -336,8 +343,11 @@ export function AlleyGame({
       // Drawn a size up on the opponents: in a crowd of four the one you are
       // steering has to be findable at a glance, and colour alone was not
       // doing it once two enemies overlapped.
+      // Trousers stay the fixed '#2f3a2a' regardless of character — only the
+      // shirt is the skinnable part, same as every other game's single body
+      // colour; the character's accent has no home here.
       { y: s.py, draw: () => drawBrawler(
-        ctx, s.px, s.py, 1.18, s.facing, s.strike, '#ff6a1a', '#2f3a2a', s.weapon, s.hurt,
+        ctx, s.px, s.py, 1.18, s.facing, s.strike, character.body, '#2f3a2a', s.weapon, s.hurt,
       ) },
     ].sort((a, b) => a.y - b.y);
     for (const c of cast) c.draw();

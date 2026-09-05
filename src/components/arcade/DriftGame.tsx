@@ -2,6 +2,9 @@
 
 import { useRef } from 'react';
 
+import { sfxCoin, sfxHazard } from '@/lib/arcade/sfx';
+import { useCharacter } from '@/state/use-character';
+
 import { GameCanvas, type Frame } from './GameCanvas';
 import { drawCar, drawCoin, drawHazard } from './sprites';
 
@@ -31,6 +34,7 @@ export function DriftGame({
 }: {
   onFinish: (score: number, coins: number, hazards: number) => void;
 }) {
+  const { character } = useCharacter();
   const state = useRef<State>({
     x: 0.5, vx: 0, dist: 0, over: false, started: false, road: [], phase: 0, curve: 0, scroll: 0,
     pickups: [], coins: 0, hazards: 0, flash: 0, nextDrop: 0,
@@ -93,8 +97,8 @@ export function DriftGame({
       for (const pickup of s.pickups) pickup.y += speed * dt;
       s.pickups = s.pickups.filter((pickup) => {
         if (Math.abs(pickup.y - carY) < 20 && Math.abs(pickup.x - s.x) < 22) {
-          if (pickup.kind === 'coin') s.coins += 1;
-          else s.hazards += 1;
+          if (pickup.kind === 'coin') { s.coins += 1; sfxCoin(); }
+          else { s.hazards += 1; sfxHazard(); }
           s.flash = pickup.kind === 'coin' ? 1 : -1;
           return false;
         }
@@ -170,7 +174,7 @@ export function DriftGame({
     ctx.translate(s.x, carY);
     // The car is drawn nose-up, so rotate a quarter turn out of its side pose.
     ctx.rotate(-Math.PI / 2 + Math.max(-0.4, Math.min(0.4, s.vx / 420)));
-    drawCar(ctx, 0, 0, 40, true, s.over ? '#dc2626' : '#ff6a1a');
+    drawCar(ctx, 0, 0, 40, true, s.over ? '#dc2626' : character.body);
     ctx.restore();
 
     ctx.fillStyle = '#17120e';

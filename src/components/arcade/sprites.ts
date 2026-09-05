@@ -23,7 +23,7 @@ export function roundRect(
 /** A character seen from above: head, shoulders, arms, feet. */
 export function drawRunner(
   ctx: CanvasRenderingContext2D,
-  x: number, y: number, scale = 1, hop = 0,
+  x: number, y: number, scale = 1, hop = 0, body = '#ff6a1a', accent = '#e05a12',
 ) {
   ctx.save();
   ctx.translate(x, y);
@@ -43,10 +43,10 @@ export function drawRunner(
   roundRect(ctx, -7, 2, 5, 10, 2.5); ctx.fill();
   roundRect(ctx, 2, 2, 5, 10, 2.5); ctx.fill();
 
-  ctx.fillStyle = '#ff6a1a';                     // torso
+  ctx.fillStyle = body;                          // torso
   roundRect(ctx, -9, -8, 18, 14, 5); ctx.fill();
 
-  ctx.fillStyle = '#e05a12';                     // arms
+  ctx.fillStyle = accent;                        // arms
   roundRect(ctx, -12.5, -6, 4, 10, 2); ctx.fill();
   roundRect(ctx, 8.5, -6, 4, 10, 2); ctx.fill();
 
@@ -365,7 +365,9 @@ export function drawInvader(
 }
 
 /** The player's cannon: tracked base, angled shoulders, barrel. */
-export function drawCannon(ctx: CanvasRenderingContext2D, x: number, y: number, w: number) {
+export function drawCannon(
+  ctx: CanvasRenderingContext2D, x: number, y: number, w: number, body = '#ff6a1a', accent = '#e05a12',
+) {
   ctx.save();
   ctx.translate(x, y);
   const h = w * 0.62;
@@ -378,7 +380,7 @@ export function drawCannon(ctx: CanvasRenderingContext2D, x: number, y: number, 
   ctx.fillStyle = '#2a211b';
   roundRect(ctx, -w / 2, h * 0.08, w, h * 0.38, h * 0.14); ctx.fill();
 
-  ctx.fillStyle = '#ff6a1a';
+  ctx.fillStyle = body;
   ctx.beginPath();
   ctx.moveTo(-w * 0.42, h * 0.1);
   ctx.lineTo(-w * 0.24, -h * 0.34);
@@ -387,7 +389,7 @@ export function drawCannon(ctx: CanvasRenderingContext2D, x: number, y: number, 
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = '#e05a12';
+  ctx.fillStyle = accent;
   roundRect(ctx, -w * 0.07, -h * 0.78, w * 0.14, h * 0.5, w * 0.05); ctx.fill();
 
   ctx.fillStyle = '#20313d';
@@ -410,6 +412,7 @@ export function drawCannon(ctx: CanvasRenderingContext2D, x: number, y: number, 
 export function drawRunnerBack(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, scale: number, stride: number, pose: 0 | 1 | 2,
+  body = '#ff6a1a', accent = '#e05a12',
 ) {
   ctx.save();
   ctx.translate(x, y);
@@ -417,7 +420,7 @@ export function drawRunnerBack(
 
   if (pose === 2) {
     // Rolled: a tucked ball with a hint of the pack still showing.
-    ctx.fillStyle = '#ff6a1a';
+    ctx.fillStyle = body;
     ctx.beginPath();
     ctx.arc(0, -11, 13, 0, Math.PI * 2);
     ctx.fill();
@@ -437,13 +440,13 @@ export function drawRunnerBack(
   roundRect(ctx, 2, -12 + (pose === 1 ? 4 : 0), 6, 14 - (pose === 1 ? 5 : 0) - swing * 0.3, 3);
   ctx.fill();
 
-  ctx.fillStyle = '#ff6a1a';                       // torso
+  ctx.fillStyle = body;                            // torso
   roundRect(ctx, -11, -32, 22, 22, 7); ctx.fill();
 
-  ctx.fillStyle = '#e05a12';                       // backpack
+  ctx.fillStyle = accent;                          // backpack
   roundRect(ctx, -7, -28, 14, 15, 5); ctx.fill();
 
-  ctx.fillStyle = '#e05a12';                       // arms
+  ctx.fillStyle = accent;                          // arms
   roundRect(ctx, -15, -30 - swing * 0.5, 5, 15, 2.5); ctx.fill();
   roundRect(ctx, 10, -30 + swing * 0.5, 5, 15, 2.5); ctx.fill();
 
@@ -546,6 +549,7 @@ export function drawBall(ctx: CanvasRenderingContext2D, x: number, y: number, r:
 export function drawBike(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, scale: number, angle: number, wheelSpin: number, hot: number,
+  body = '#ff6a1a', accent = '#e05a12',
 ) {
   ctx.save();
   ctx.translate(x, y);
@@ -592,9 +596,9 @@ export function drawBike(
   // Rider: leaning back over the seat, elbows out.
   ctx.fillStyle = '#2f3a2a';
   roundRect(ctx, -8, -18, 7, 12, 3); ctx.fill();
-  ctx.fillStyle = '#ff6a1a';
+  ctx.fillStyle = body;
   roundRect(ctx, -9, -27, 14, 12, 4); ctx.fill();
-  ctx.fillStyle = '#e05a12';
+  ctx.fillStyle = accent;
   roundRect(ctx, 3, -25, 11, 4, 2); ctx.fill();
   ctx.fillStyle = '#20313d';                       // helmet
   ctx.beginPath();

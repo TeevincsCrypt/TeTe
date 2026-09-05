@@ -7,17 +7,19 @@ import { AlleyGame } from '@/components/arcade/AlleyGame';
 import { CrossingGame } from '@/components/arcade/CrossingGame';
 import { DriftGame } from '@/components/arcade/DriftGame';
 import { GameGlyph } from '@/components/arcade/GameGlyph';
+import { GameOverPopup } from '@/components/arcade/GameOverPopup';
 import { InvasionGame } from '@/components/arcade/InvasionGame';
 import { OverheatGame } from '@/components/arcade/OverheatGame';
 import { PitchGame } from '@/components/arcade/PitchGame';
 import { RushGame } from '@/components/arcade/RushGame';
 import { SliceGame } from '@/components/arcade/SliceGame';
-import { ChevronLeftIcon, ChevronRightIcon, CrownIcon } from '@/components/shell/icons';
+import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, CrownIcon } from '@/components/shell/icons';
 import { ApiError, claimGameReward, fetchStatus } from '@/lib/api/client';
 import { cn } from '@/components/ui/cn';
 import { PhaseNote } from '@/components/ui/PhaseNote';
 import { GAMES, gameById, type GameId } from '@/lib/arcade/games';
 import { formatNim } from '@/lib/nimiq/units';
+import { useCharacter } from '@/state/use-character';
 import { useMiniApp } from '@/state/mini-app-provider';
 import { useRewardBalance } from '@/state/use-reward-balance';
 import { useProgress } from '@/state/use-progress';
@@ -36,6 +38,7 @@ export default function ArcadePage() {
   const { nimiq } = useMiniApp();
   const { progress, record } = useProgress();
   const { balance: earned } = useRewardBalance();
+  const { character, characters, setCharacter } = useCharacter();
   const [active, setActive] = useState<GameId | null>(null);
   const [result, setResult] = useState<
     | { score: number; coins: number; hazards: number; luna: number; record: boolean; at: number }
@@ -83,7 +86,7 @@ export default function ArcadePage() {
           </span>
         </header>
 
-        <div className="overflow-hidden rounded-[1.25rem] ring-1 ring-ink/10">
+        <div className="relative overflow-hidden rounded-[1.25rem] ring-1 ring-ink/10">
           {active === 'crossing' && <CrossingGame key="crossing" onFinish={finish('crossing')} />}
           {active === 'drift' && <DriftGame key="drift" onFinish={finish('drift')} />}
           {active === 'slice' && <SliceGame key="slice" onFinish={finish('slice')} />}
@@ -92,6 +95,10 @@ export default function ArcadePage() {
           {active === 'pitch' && <PitchGame key="pitch" onFinish={finish('pitch')} />}
           {active === 'overheat' && <OverheatGame key="overheat" onFinish={finish('overheat')} />}
           {active === 'alley' && <AlleyGame key="alley" onFinish={finish('alley')} />}
+
+          {result && (
+            <GameOverPopup key={result.at} record={result.record} score={result.score} unit={game.unit} />
+          )}
         </div>
 
         {result && (
@@ -135,7 +142,39 @@ export default function ArcadePage() {
         </div>
       </header>
 
-      <ul className="divide-y divide-line">
+      <div className="pt-5">
+        <p className="text-[0.625rem] font-bold uppercase tracking-[0.12em] text-faint">
+          Your character
+        </p>
+        <div className="mt-2.5 flex gap-2.5">
+          {characters.map((option) => {
+            const selected = option.id === character.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setCharacter(option.id)}
+                aria-label={option.name}
+                aria-pressed={selected}
+                className="flex size-11 shrink-0 items-center justify-center rounded-full transition-transform duration-100 active:scale-90"
+                style={{ backgroundColor: option.body }}
+              >
+                {selected && (
+                  <span className="flex size-5 items-center justify-center rounded-full bg-on-accent text-accent">
+                    <CheckIcon className="size-3" strokeWidth={3} />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[0.6875rem] leading-snug text-faint">
+          Colours your player in Crossing, Drift, Rush, Invasion, Overheat and Alley — Pitch and
+          Slice have no on-screen character to skin.
+        </p>
+      </div>
+
+      <ul className="mt-5 divide-y divide-line">
         {GAMES.map((game) => {
           const best = progress.best[game.id];
           return (

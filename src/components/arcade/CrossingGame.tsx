@@ -2,6 +2,9 @@
 
 import { useRef } from 'react';
 
+import { sfxCoin, sfxHazard, sfxJump } from '@/lib/arcade/sfx';
+import { useCharacter } from '@/state/use-character';
+
 import { GameCanvas, type Frame } from './GameCanvas';
 import { drawCar, drawCoin, drawHazard, drawRunner, drawTrain } from './sprites';
 
@@ -34,6 +37,7 @@ export function CrossingGame({
 }: {
   onFinish: (score: number, coins: number, hazards: number) => void;
 }) {
+  const { character } = useCharacter();
   const state = useRef<State>({
     row: 0, col: 3, over: false, scroll: 0, lanes: [], cars: [], pickups: [], coins: 0, hazards: 0, flash: 0,
     hop: 0, best: 0, started: false,
@@ -110,14 +114,15 @@ export function CrossingGame({
         s.hop = 1;
         s.best = Math.max(s.best, s.row);
         ensureLanes(s.row);
+        sfxJump();
       }
 
       // Landing square decides the pickup, whichever way the player moved.
       const pickup = s.pickups.find((p) => !p.taken && p.lane === s.row && p.col === s.col);
       if (pickup) {
         pickup.taken = true;
-        if (pickup.kind === 'coin') s.coins += 1;
-        else s.hazards += 1;
+        if (pickup.kind === 'coin') { s.coins += 1; sfxCoin(); }
+        else { s.hazards += 1; sfxHazard(); }
         s.flash = pickup.kind === 'coin' ? 1 : -1;
       }
     }
@@ -195,7 +200,7 @@ export function CrossingGame({
 
     const px = ox + s.col * LANE + LANE / 2;
     const py = baseY - LANE / 2;
-    drawRunner(ctx, px, py, 1, s.hop);
+    drawRunner(ctx, px, py, 1, s.hop, character.body, character.accent);
 
     ctx.fillStyle = '#17120e';
     ctx.font = '900 34px Archivo, system-ui, sans-serif';
