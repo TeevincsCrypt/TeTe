@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { FormatArt } from '@/components/challenges/FormatArt';
+import { PnlCardButton } from '@/components/challenges/PnlCardButton';
 import { StateChip } from '@/components/challenges/StateChip';
 import { ChevronLeftIcon, CheckIcon } from '@/components/shell/icons';
 import { PlayerFace } from '@/components/ui/PlayerFace';
@@ -435,6 +436,7 @@ function ChallengeAction({
             {challenge.resolutionNote ? ` “${challenge.resolutionNote}”` : ''}
           </p>
         )}
+        {won && <PnlCardButton challenge={challenge} mySide={mySide} address={address} />}
       </Sticker>
     );
   }
