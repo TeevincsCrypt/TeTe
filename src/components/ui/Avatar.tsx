@@ -1,16 +1,6 @@
-import { hashString } from '@/lib/ids';
+import { avatarGeometry } from '@/lib/profile/avatar-geometry';
 
 import { cn } from './cn';
-
-/** Drawn from the app palette so generated faces stay on-brand. */
-const PALETTES = [
-  ['#ff6a1a', '#17120e'],
-  ['#17120e', '#ff6a1a'],
-  ['#6d4aff', '#f7f2ed'],
-  ['#9a6600', '#f7f2ed'],
-  ['#15803d', '#f7f2ed'],
-  ['#cc3118', '#f7f2ed'],
-] as const;
 
 /**
  * A deterministic geometric avatar derived from the player's real address.
@@ -47,11 +37,7 @@ export function Avatar({
     );
   }
 
-  const hash = seed === null || seed === undefined ? hashString(address ?? 'tete') : seed;
-  const palette = PALETTES[hash % PALETTES.length] ?? PALETTES[0];
-  const [bg, fg] = palette;
-  const rotation = hash % 4;
-  const variant = (hash >> 3) % 4;
+  const { bg, fg, rotation, variant } = avatarGeometry(address, seed);
 
   return (
     <span
