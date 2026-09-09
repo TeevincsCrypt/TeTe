@@ -25,6 +25,7 @@ import { defaultHandle } from '@/lib/profile/local-profile';
 import { useMiniApp } from '@/state/mini-app-provider';
 import { useDrafts } from '@/state/use-drafts';
 import { rememberPlayerLook } from '@/state/use-player-look';
+import { useRecord } from '@/state/use-record';
 import { useRoster } from '@/state/use-roster';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { useLocalProfile } from '@/state/use-local-profile';
@@ -37,7 +38,9 @@ import { useLocalProfile } from '@/state/use-local-profile';
  * things: the display name is local decoration that never leaves the device,
  * while the claimed TeTe name is registered in the directory and is what an
  * opponent types to challenge you. The avatar is generated from the address
- * itself. Reputation counters are real and sit at zero until matches settle.
+ * itself. The record below is computed from this address's own settled
+ * challenges on every visit — there is no stored counter to fall out of
+ * sync, so it sits at zero only for a player with nothing settled yet.
  */
 export default function ProfilePage() {
   const { nimiq, evm, locale } = useMiniApp();
@@ -109,6 +112,7 @@ export default function ProfilePage() {
   }, [nimiq.address, photo, avatarSeed]);
   const { drafts } = useDrafts();
   const { players, remove: removePlayer } = useRoster();
+  const record = useRecord(nimiq.address);
 
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState('');
@@ -302,13 +306,23 @@ export default function ProfilePage() {
       <section>
         <Eyebrow className="mb-3 text-faint">Record</Eyebrow>
         <div className="grid grid-cols-2 gap-3">
-          <StatTile label="Played" value={0} icon={<SwordsIcon className="size-3.5" />} />
-          <StatTile label="Won" value={0} accent="accent" icon={<TrophyIcon className="size-3.5" />} />
-          <StatTile label="Win rate" value="—" icon={<TargetIcon className="size-3.5" />} />
-          <StatTile label="Best streak" value={0} accent="flame" icon={<FlameIcon className="size-3.5" />} />
+          <StatTile label="Played" value={record?.played ?? '—'} icon={<SwordsIcon className="size-3.5" />} />
+          <StatTile label="Won" value={record?.won ?? '—'} accent="accent" icon={<TrophyIcon className="size-3.5" />} />
+          <StatTile
+            label="Win rate"
+            value={record && record.winRate !== null ? `${Math.round(record.winRate * 100)}%` : '—'}
+            icon={<TargetIcon className="size-3.5" />}
+          />
+          <StatTile label="Best streak" value={record?.bestStreak ?? '—'} accent="flame" icon={<FlameIcon className="size-3.5" />} />
         </div>
         <PhaseNote className="mt-3">
-          Real counters at zero. Nothing is recorded until challenges can be settled.
+          {record === undefined
+            ? 'Reading your settled challenges…'
+            : record === null
+              ? 'Could not read your record right now — try again shortly.'
+              : record.played === 0
+                ? 'Real counters, computed from your settled challenges. Nothing has settled yet.'
+                : 'Computed from your settled challenges, live.'}
         </PhaseNote>
       </section>
 

@@ -25,6 +25,7 @@ import { defaultHandle } from '@/lib/profile/local-profile';
 import { useMiniApp } from '@/state/mini-app-provider';
 import { useDrafts } from '@/state/use-drafts';
 import { useLocalProfile } from '@/state/use-local-profile';
+import { useRecord } from '@/state/use-record';
 import { useRewardBalance } from '@/state/use-reward-balance';
 import { useProgress } from '@/state/use-progress';
 
@@ -36,6 +37,7 @@ export default function HomePage() {
   const { drafts } = useDrafts();
   const { progress } = useProgress();
   const { balance: earned } = useRewardBalance();
+  const record = useRecord(nimiq.address);
   const connected = nimiq.address !== null;
   const handle = displayName ?? defaultHandle(nimiq.address);
 
@@ -77,7 +79,7 @@ export default function HomePage() {
       {/* Stats as a figure row divided by hairlines, not four bordered boxes. */}
       <section className="mt-8 border-y border-line">
         <div className="grid grid-cols-4 divide-x divide-line">
-          <Figure icon={<TrophyIcon className="size-3.5" />} label="Wins" value="0" />
+          <Figure icon={<TrophyIcon className="size-3.5" />} label="Wins" value={record ? String(record.won) : '—'} />
           <Figure icon={<FlameIcon className="size-3.5" />} label="Streak" value={String(progress.streak)} />
           <Figure icon={<StarIcon className="size-3.5" />} label="Earned" value={earned === null ? '—' : formatNim(earned, { maximumFractionDigits: 2 })} />
           <Figure icon={<CrownIcon className="size-3.5" />} label="Rank" value="—" />
@@ -94,7 +96,7 @@ export default function HomePage() {
         </Link>
       </div>
       <p className="mt-1 text-[0.6875rem] leading-snug text-faint">
-        Streak and earnings are yours and live. Wins and rank stay empty until challenges ship.
+        Streak, earnings and wins are yours and live. Rank stays empty until ranking ships.
       </p>
 
       <Section title="Arcade" href="/arcade" action="All games">
