@@ -667,7 +667,7 @@ function InviteFriends({ username }: { username: string }) {
       <p className="text-[0.8125rem] font-bold">Invite friends</p>
       <p className="mt-1 text-[0.75rem] leading-relaxed text-muted">
         Share your link. When someone you invite claims a name and settles their first
-        challenge, you both get 1 NIM.
+        challenge, you both get 10 NIM.
       </p>
       <button
         type="button"

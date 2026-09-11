@@ -23,7 +23,7 @@ import { get, set, setIfAbsent } from './store';
  * happens in players.ts itself, which is the one place that can call this
  * without the two files importing each other.
  */
-const REFERRAL_BONUS_LUNA = 100_000; // 1 NIM each, referrer and referee
+const REFERRAL_BONUS_LUNA = 1_000_000; // 10 NIM each, referrer and referee
 
 const pendingKey = (address: string) => `referral:pending:${compactAddress(address)}`;
 const claimedKey = (address: string) => `referral:claimed:${compactAddress(address)}`;

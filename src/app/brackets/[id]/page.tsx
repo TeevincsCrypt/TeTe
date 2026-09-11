@@ -25,6 +25,7 @@ import { formatById } from '@/lib/challenges/types';
 import { copyText } from '@/lib/clipboard';
 import { compactAddress, shortenAddress } from '@/lib/nimiq/address';
 import { formatNim } from '@/lib/nimiq/units';
+import { pushNotice } from '@/lib/notifications/notifications';
 import { useMiniApp } from '@/state/mini-app-provider';
 
 const POLL_MS = 6_000;
@@ -81,7 +82,16 @@ export default function BracketDetailPage() {
     setBusy(true);
     setError(null);
     try {
-      setBracket(await joinBracket(nimiq.address, id));
+      const joined = await joinBracket(nimiq.address, id);
+      setBracket(joined);
+      pushNotice(
+        'challenge',
+        joined.state === 'live' ? 'Tournament started' : 'Joined tournament',
+        joined.state === 'live'
+          ? `${title} — the field is full, your first match is ready.`
+          : `${title} — ${joined.entrants.length}/${joined.size} joined.`,
+        `/brackets/${id}`,
+      );
     } catch (cause: unknown) {
       setError(cause instanceof ApiError ? cause.message : 'Could not join this tournament.');
     } finally {
