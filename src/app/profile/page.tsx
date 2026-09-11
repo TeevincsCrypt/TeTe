@@ -17,6 +17,7 @@ import { ApiError, claimUsername, myDirectoryName, saveProfileLook } from '@/lib
 import { copyText } from '@/lib/clipboard';
 import { USERNAME_PATTERN } from '@/lib/roster/roster';
 import { preparePhoto } from '@/lib/profile/local-profile';
+import { readReferredBy } from '@/lib/profile/referral';
 import { NIMIQ_NETWORK_LABEL } from '@/lib/config/env';
 import { chainLabel } from '@/lib/evm/chains';
 import { shortenEvmAddress } from '@/lib/evm/erc20';
@@ -525,7 +526,7 @@ function DirectoryName({ address, suggestion }: { address: string; suggestion: s
     setBusy(true);
     setError(null);
     try {
-      const player = await claimUsername(address, wanted);
+      const player = await claimUsername(address, wanted, readReferredBy() ?? undefined);
       setClaimed(player.username);
       setEditing(false);
     } catch (cause: unknown) {
@@ -626,10 +627,56 @@ function DirectoryName({ address, suggestion }: { address: string; suggestion: s
             >
               Change name
             </button>
+
+            <InviteFriends username={claimed} />
           </>
         )}
       </Sticker>
     </section>
+  );
+}
+
+/**
+ * The referral code is just the player's own claimed name — nothing extra to
+ * generate or copy separately. A friend who opens this link and later
+ * claims a name of their own gets linked to it automatically; the bonus
+ * itself only pays out once they genuinely settle a challenge.
+ */
+function InviteFriends({ username }: { username: string }) {
+  const [copied, setCopied] = useState(false);
+  const url = useRef('');
+
+  useEffect(() => {
+    url.current = `${window.location.origin}/?ref=${encodeURIComponent(username)}`;
+  }, [username]);
+
+  async function share() {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Play TeTe with me', url: url.current });
+        return;
+      } catch {
+        /* Dismissed — fall through to copying. */
+      }
+    }
+    setCopied(await copyText(url.current));
+  }
+
+  return (
+    <div className="mt-4 border-t border-line pt-4">
+      <p className="text-[0.8125rem] font-bold">Invite friends</p>
+      <p className="mt-1 text-[0.75rem] leading-relaxed text-muted">
+        Share your link. When someone you invite claims a name and settles their first
+        challenge, you both get 1 NIM.
+      </p>
+      <button
+        type="button"
+        onClick={share}
+        className="mt-3 min-h-9 text-[0.75rem] font-bold text-accent-text underline underline-offset-2"
+      >
+        {copied ? 'Link copied' : 'Share your invite link'}
+      </button>
+    </div>
   );
 }
 

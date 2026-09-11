@@ -2,6 +2,7 @@ import 'server-only';
 
 import { USERNAME_PATTERN, usernameKey } from '@/lib/roster/roster';
 
+import { setPendingReferral } from './referrals';
 import { get, set, setIfAbsent } from './store';
 
 /**
@@ -58,7 +59,11 @@ export type ClaimResult =
  * error, so a client retrying after a dropped response does not get a
  * confusing failure. Changing name releases the previous one.
  */
-export async function claimUsername(username: string, address: string): Promise<ClaimResult> {
+export async function claimUsername(
+  username: string,
+  address: string,
+  referredBy?: string,
+): Promise<ClaimResult> {
   const name = username.trim();
   if (!USERNAME_PATTERN.test(name)) {
     return { ok: false, error: 'Usernames are 3–16 letters, numbers or underscores.' };
@@ -74,6 +79,17 @@ export async function claimUsername(username: string, address: string): Promise<
   if (!existing) {
     const won = await setIfAbsent(nameKey(name), record);
     if (!won) return { ok: false, error: `@${name} was just taken.` };
+
+    // Only on a genuinely new claim, never a re-claim or a rename — the
+    // referral is about this address showing up for the first time. A bad
+    // or made-up code, or one pointing at this same address, is silently
+    // ignored rather than failing the claim over it.
+    if (referredBy && usernameKey(referredBy) !== usernameKey(name)) {
+      const referrer = await get<PlayerRecord>(nameKey(referredBy));
+      if (referrer && referrer.address !== address) {
+        await setPendingReferral(address, referrer.address);
+      }
+    }
   }
 
   // Release any previous handle this address held.

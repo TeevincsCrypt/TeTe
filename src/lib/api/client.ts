@@ -10,6 +10,7 @@
  * deliberate, user-initiated action — never something that fires on a render.
  */
 import { signingMessage } from '@/lib/api/message';
+import type { Bracket, BracketSize } from '@/lib/bracket/types';
 import { clearSentStake, readSentStake, recordSentStake } from '@/lib/challenges/funding-record';
 import { fundingMemo, type Challenge } from '@/lib/escrow/types';
 import { sendNim, signMessage } from '@/lib/nimiq/provider';
@@ -90,9 +91,17 @@ export async function myDirectoryName(address: string): Promise<DirectoryPlayer 
   return body.player;
 }
 
-export async function claimUsername(address: string, username: string): Promise<DirectoryPlayer> {
+export async function claimUsername(
+  address: string,
+  username: string,
+  referredBy?: string,
+): Promise<DirectoryPlayer> {
   const auth = await signIntent(address, 'register');
-  const body = await post<{ player: DirectoryPlayer }>('/api/players', { ...auth, username });
+  const body = await post<{ player: DirectoryPlayer }>('/api/players', {
+    ...auth,
+    username,
+    ...(referredBy ? { referredBy } : {}),
+  });
   return body.player;
 }
 
@@ -142,6 +151,12 @@ export async function fetchOpenChallenges(): Promise<Challenge[]> {
 /** Every challenge this address is host or guest on. */
 export async function fetchMyChallenges(address: string): Promise<Challenge[]> {
   const body = await get<{ challenges: Challenge[] }>(`/api/challenges?address=${encodeURIComponent(address)}`);
+  return body.challenges;
+}
+
+/** The most recently settled challenges, across every player. Public. */
+export async function fetchRecentSettled(): Promise<Challenge[]> {
+  const body = await get<{ challenges: Challenge[] }>('/api/challenges?recent=1');
   return body.challenges;
 }
 
@@ -272,6 +287,41 @@ export function signConfirmFunding(address: string, challengeId: string) {
 export async function withdrawRewards(address: string) {
   const auth = await signIntent(address, 'withdraw');
   return post<{ sent: number; transaction: string }>('/api/withdraw', auth);
+}
+
+/** Start a tournament, entering yourself as its first player. */
+export async function createBracket(
+  address: string,
+  input: { format: string; title?: string; currency: string; stake: number; size: BracketSize },
+): Promise<Bracket> {
+  const auth = await signIntent(address, 'create-bracket');
+  const body = await post<{ bracket: Bracket }>('/api/brackets', { ...auth, ...input });
+  return body.bracket;
+}
+
+/** Tournaments still filling up — the open board. */
+export async function fetchOpenBrackets(): Promise<Bracket[]> {
+  const body = await get<{ brackets: Bracket[] }>('/api/brackets');
+  return body.brackets;
+}
+
+/** Every tournament this address has entered. */
+export async function fetchMyBrackets(address: string): Promise<Bracket[]> {
+  const body = await get<{ brackets: Bracket[] }>(`/api/brackets?address=${encodeURIComponent(address)}`);
+  return body.brackets;
+}
+
+export async function fetchBracket(id: string): Promise<Bracket | null> {
+  const response = await fetch(`/api/brackets/${id}`, { cache: 'no-store' });
+  if (response.status === 404) return null;
+  const body = await parse<{ bracket: Bracket }>(response);
+  return body.bracket;
+}
+
+export async function joinBracket(address: string, id: string): Promise<Bracket> {
+  const auth = await signIntent(address, `join-bracket:${id}`);
+  const body = await post<{ bracket: Bracket }>(`/api/brackets/${id}`, { ...auth, action: 'join' });
+  return body.bracket;
 }
 
 /**
