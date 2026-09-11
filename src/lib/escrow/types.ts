@@ -55,6 +55,13 @@ export interface EscrowParty {
   reported?: Side;
   reportedAt?: number;
   /**
+   * A screenshot this player attached to their report, as a small data URL.
+   * Optional and purely evidentiary — TeTe does not referee it, it just gives
+   * both players something concrete to point at instead of a bare claim,
+   * which is most of what a dispute actually is.
+   */
+  evidence?: string;
+  /**
    * Set when this player has offered to call a disputed match off and take
    * their own stake back rather than argue it out. It takes both sides to
    * actually void, so this alone never moves money — otherwise whoever lost
@@ -95,6 +102,14 @@ export interface Challenge {
   updatedAt: number;
   /** Unfunded challenges expire so a stale board does not accumulate. */
   expiresAt: number;
+  /**
+   * Set when this challenge is one round of a bracket rather than a
+   * standalone match. The match itself is settled exactly like any other
+   * challenge — funding, reporting, disputes, all unchanged — this is only
+   * what lets the bracket notice a result and advance the winner.
+   */
+  bracketId?: string;
+  bracketRound?: number;
 }
 
 /** The pot, before fees. Both players stake the same. */

@@ -7,6 +7,7 @@ import {
   createChallenge,
   openChallenges,
   reconcileFunding,
+  recentSettled,
 } from '@/lib/server/challenges';
 import { treasuryHistory } from '@/lib/server/treasury';
 import { hasDurableStore, hasTreasury } from '@/lib/server/env';
@@ -26,10 +27,18 @@ function unavailable() {
   );
 }
 
-/** The open board, or one player's challenges. */
+/** The open board, one player's challenges, or the public recent-wins feed. */
 export async function GET(request: Request) {
   if (!hasDurableStore) return unavailable();
-  const address = new URL(request.url).searchParams.get('address');
+  const params = new URL(request.url).searchParams;
+
+  // Public, like the open board — a settled result and who won it is not a
+  // secret, and this is what lets Home show real recent activity to anyone.
+  if (params.get('recent') === '1') {
+    return NextResponse.json({ challenges: await recentSettled() });
+  }
+
+  const address = params.get('address');
   if (!address) return NextResponse.json({ challenges: await openChallenges() });
 
   const challenges = await challengesFor(address);

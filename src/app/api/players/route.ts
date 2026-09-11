@@ -87,7 +87,8 @@ export async function POST(request: Request) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
 
   const username = typeof body.username === 'string' ? body.username : '';
-  const result = await claimUsername(username, auth.address);
+  const referredBy = typeof body.referredBy === 'string' ? body.referredBy : undefined;
+  const result = await claimUsername(username, auth.address, referredBy);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 409 });
 
   return NextResponse.json({ player: result.player });

@@ -21,6 +21,9 @@ export const dynamic = 'force-dynamic';
 // so a platform timeout can never cut a settlement off mid-poll.
 export const maxDuration = 30;
 
+/** Matches the client's own compression cap in lib/challenges/evidence.ts. */
+const MAX_EVIDENCE_BYTES = 300_000;
+
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, { params }: Params) {
@@ -143,7 +146,14 @@ export async function POST(request: Request, { params }: Params) {
   if (winner !== 'host' && winner !== 'guest') {
     return NextResponse.json({ error: 'Winner must be host or guest.' }, { status: 400 });
   }
-  const result = await reportResult(id, auth.address, winner);
+  let evidence: string | undefined;
+  if (body.evidence !== undefined) {
+    if (typeof body.evidence !== 'string' || body.evidence.length > MAX_EVIDENCE_BYTES) {
+      return NextResponse.json({ error: 'That proof image is too large.' }, { status: 400 });
+    }
+    evidence = body.evidence;
+  }
+  const result = await reportResult(id, auth.address, winner, evidence);
   return result.ok
     ? NextResponse.json({ challenge: result.value })
     : NextResponse.json({ error: result.error }, { status: result.status });

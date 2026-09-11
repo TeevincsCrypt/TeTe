@@ -20,6 +20,7 @@ import {
   tryConfirmStake,
   type FundingView,
 } from '@/lib/api/client';
+import { prepareEvidence } from '@/lib/challenges/evidence';
 import { clearSentStake, readSentStake, type SentStake } from '@/lib/challenges/funding-record';
 import { formatById } from '@/lib/challenges/types';
 import { copyText } from '@/lib/clipboard';
@@ -201,20 +202,30 @@ function ReportRow({
   side,
 }: {
   label: string;
-  side: { username?: string; address: string; reported?: Side };
+  side: { username?: string; address: string; reported?: Side; evidence?: string };
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-1.5 text-[0.8125rem]">
-      <span className="flex min-w-0 items-center gap-2 text-muted">
-        <PlayerFace address={side.address} size={20} className="border" />
-        <span className="truncate">
-          {label}
-          {side.username ? ` (@${side.username})` : ''}
+    <div className="py-1.5">
+      <div className="flex items-center justify-between gap-3 text-[0.8125rem]">
+        <span className="flex min-w-0 items-center gap-2 text-muted">
+          <PlayerFace address={side.address} size={20} className="border" />
+          <span className="truncate">
+            {label}
+            {side.username ? ` (@${side.username})` : ''}
+          </span>
         </span>
-      </span>
-      <span className="shrink-0 font-bold">
-        {side.reported ? `Says ${side.reported} won` : 'No report yet'}
-      </span>
+        <span className="shrink-0 font-bold">
+          {side.reported ? `Says ${side.reported} won` : 'No report yet'}
+        </span>
+      </div>
+      {side.evidence && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={side.evidence}
+          alt={`${label}'s attached proof`}
+          className="mt-2 max-h-32 w-full rounded-lg object-cover"
+        />
+      )}
     </div>
   );
 }
@@ -327,40 +338,18 @@ function ChallengeAction({
           <p className="mt-1 text-[0.8125rem] text-muted">
             You said {me.reported === mySide ? 'you' : 'they'} won. Waiting on the other report.
           </p>
+          {me.evidence && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={me.evidence}
+              alt="Your attached proof"
+              className="mt-3 max-h-40 w-full rounded-xl object-cover"
+            />
+          )}
         </Sticker>
       );
     }
-    return (
-      <div className="space-y-2.5">
-        <p className="text-[0.8125rem] font-bold text-muted">Who won?</p>
-        <div className="grid grid-cols-2 gap-2.5">
-          <Button
-            variant="contrast"
-            onClick={() => onRun('report-me', () => challengeAction(address, challenge.id, 'report', { winner: mySide }))}
-            loading={busy === 'report-me'}
-          >
-            I won
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() =>
-              onRun('report-them', () =>
-                challengeAction(address, challenge.id, 'report', {
-                  winner: mySide === 'host' ? 'guest' : 'host',
-                }),
-              )
-            }
-            loading={busy === 'report-them'}
-          >
-            They won
-          </Button>
-        </div>
-        <PhaseNote>
-          If your reports disagree, the challenge is held as disputed and nothing is paid
-          automatically.
-        </PhaseNote>
-      </div>
-    );
+    return <ReportForm mySide={mySide} address={address} challenge={challenge} busy={busy} onRun={onRun} />;
   }
 
   if (challenge.state === 'disputed') {
@@ -466,6 +455,114 @@ function ChallengeAction({
   }
 
   return null;
+}
+
+/**
+ * The "Who won?" step, with an optional screenshot attached to whichever
+ * button is pressed. Evidence is decoration TeTe never referees — it just
+ * gives both players something concrete to point at instead of a bare claim,
+ * which is most of what a dispute actually is.
+ */
+function ReportForm({
+  mySide,
+  address,
+  challenge,
+  busy,
+  onRun,
+}: {
+  mySide: Side;
+  address: string;
+  challenge: Challenge;
+  busy: string | null;
+  onRun: (label: string, action: () => Promise<Challenge>) => Promise<void>;
+}) {
+  const [evidence, setEvidence] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement | null>(null);
+
+  async function pick(file: File) {
+    setError(null);
+    setPreparing(true);
+    try {
+      setEvidence(await prepareEvidence(file));
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'Could not use that image.');
+    } finally {
+      setPreparing(false);
+    }
+  }
+
+  function report(winner: Side) {
+    return onRun(winner === mySide ? 'report-me' : 'report-them', () =>
+      challengeAction(address, challenge.id, 'report', {
+        winner,
+        ...(evidence ? { evidence } : {}),
+      }),
+    );
+  }
+
+  return (
+    <div className="space-y-2.5">
+      <p className="text-[0.8125rem] font-bold text-muted">Who won?</p>
+
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void pick(file);
+          event.target.value = '';
+        }}
+      />
+      {evidence ? (
+        <div className="relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={evidence} alt="Attached proof" className="max-h-40 w-full rounded-xl object-cover" />
+          <button
+            type="button"
+            onClick={() => setEvidence(null)}
+            className="absolute right-2 top-2 rounded-full bg-contrast/80 px-3 py-1.5 text-[0.6875rem] font-bold text-on-contrast"
+          >
+            Remove
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => input.current?.click()}
+          disabled={preparing}
+          className="w-full rounded-xl border border-dashed border-line py-3 text-[0.75rem] font-bold text-muted active:opacity-60"
+        >
+          {preparing ? 'Preparing…' : 'Attach a screenshot as proof (optional)'}
+        </button>
+      )}
+      {error && (
+        <p role="alert" className="text-[0.75rem] font-semibold text-negative">
+          {error}
+        </p>
+      )}
+
+      <div className="grid grid-cols-2 gap-2.5">
+        <Button variant="contrast" onClick={() => report(mySide)} loading={busy === 'report-me'}>
+          I won
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => report(mySide === 'host' ? 'guest' : 'host')}
+          loading={busy === 'report-them'}
+        >
+          They won
+        </Button>
+      </div>
+      <PhaseNote>
+        If your reports disagree, the challenge is held as disputed and nothing is paid
+        automatically.
+      </PhaseNote>
+    </div>
+  );
 }
 
 function FundingCard({

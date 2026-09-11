@@ -10,8 +10,13 @@ import {
   type Challenge,
   type Side,
 } from '@/lib/escrow/types';
+import type { ChallengeFormatId } from '@/lib/challenges/types';
+import type { StakeCurrency } from '@/types';
+
 import { recordActivity } from './activity';
+import { advanceBracket } from './brackets';
 import { TREASURY_ADDRESS } from './env';
+import { maybeCreditReferral } from './referrals';
 import {
   explainMissingFunding,
   findFunding,
@@ -34,6 +39,9 @@ const OPEN_LIST = 'challenges:open';
 const playerList = (address: string) => `challenges:player:${address.replace(/\s+/g, '')}`;
 /** Transaction hashes already counted as somebody's stake. */
 const CLAIMED_LIST = 'challenges:claimed-funding';
+/** Most recent settlements, across every player — a public "recent wins" feed. */
+const RECENT_SETTLED_LIST = 'challenges:recent-settled';
+const RECENT_SETTLED_CAP = 30;
 
 async function claimedFundingHashes(): Promise<Set<string>> {
   return new Set(await list(CLAIMED_LIST, 500));
@@ -77,6 +85,50 @@ export async function createChallenge(input: Omit<Challenge, 'state' | 'updatedA
   return challenge;
 }
 
+/**
+ * Create a challenge between two known players, already accepted.
+ *
+ * Used for bracket rounds, where the pairing is decided by the bracket, not
+ * by an open invite one side has to wait for somebody to take — both seats
+ * are already filled the moment this is called, so it skips straight past
+ * the open board and the manual accept step.
+ */
+export async function createDirectMatch(input: {
+  id: string;
+  format: ChallengeFormatId;
+  title?: string;
+  currency: StakeCurrency;
+  stake: number;
+  host: { address: string; username?: string };
+  guest: { address: string; username?: string };
+  createdAt: number;
+  expiresAt: number;
+  bracketId: string;
+  bracketRound: number;
+}): Promise<Challenge> {
+  const guest = { address: input.guest.address, username: input.guest.username, acceptedAt: input.createdAt };
+  const challenge: Challenge = {
+    id: input.id,
+    state: 'accepted',
+    format: input.format,
+    title: input.title,
+    currency: input.currency,
+    stake: input.stake,
+    host: { address: input.host.address, username: input.host.username },
+    guest,
+    escrowAddress: TREASURY_ADDRESS,
+    createdAt: input.createdAt,
+    updatedAt: Date.now(),
+    expiresAt: input.expiresAt,
+    bracketId: input.bracketId,
+    bracketRound: input.bracketRound,
+  };
+  await save(challenge);
+  await push(playerList(challenge.host.address), challenge.id);
+  await push(playerList(guest.address), challenge.id);
+  return challenge;
+}
+
 export async function openChallenges(limit = 40): Promise<Challenge[]> {
   const ids = await list(OPEN_LIST, limit);
   const found = await Promise.all(ids.map(readChallenge));
@@ -87,6 +139,13 @@ export async function challengesFor(address: string, limit = 40): Promise<Challe
   const ids = await list(playerList(address), limit);
   const found = await Promise.all(ids.map(readChallenge));
   return found.filter((c): c is Challenge => c !== null);
+}
+
+/** The most recently settled challenges, across every player — a public feed. */
+export async function recentSettled(limit = 8): Promise<Challenge[]> {
+  const ids = await list(RECENT_SETTLED_LIST, limit);
+  const found = await Promise.all(ids.map(readChallenge));
+  return found.filter((c): c is Challenge => c !== null && c.state === 'settled');
 }
 
 export type Outcome<T> = { ok: true; value: T } | { ok: false; error: string; status: number };
@@ -219,6 +278,18 @@ async function payWinner(
       label: `Won: ${challenge.title?.trim() || challenge.format}`,
       href: `/challenges/${challenge.id}`,
     });
+
+    // Best-effort side effects of a settlement that has already, genuinely,
+    // happened — none of these can turn a real payout into a failure.
+    try {
+      await push(RECENT_SETTLED_LIST, challenge.id, RECENT_SETTLED_CAP);
+    } catch {
+      /* The feed missing one entry costs nothing the payout itself did not already survive. */
+    }
+    await maybeCreditReferral(challenge.host.address);
+    if (challenge.guest) await maybeCreditReferral(challenge.guest.address);
+    if (challenge.bracketId) await advanceBracket(challenge);
+
     return { ok: true, value: challenge };
   } catch (cause: unknown) {
     await save(challenge);
@@ -271,7 +342,12 @@ async function refundStakes(challenge: Challenge, label: string): Promise<Outcom
  * here and now. Changing your answer to your opponent's is conceding, and
  * concedes the pot with it; that is the player's own money to give.
  */
-export async function reportResult(id: string, address: string, winner: Side): Promise<Outcome<Challenge>> {
+export async function reportResult(
+  id: string,
+  address: string,
+  winner: Side,
+  evidence?: string,
+): Promise<Outcome<Challenge>> {
   const challenge = await readChallenge(id);
   if (!challenge) return fail('No such challenge.', 404);
   if (
@@ -290,6 +366,7 @@ export async function reportResult(id: string, address: string, winner: Side): P
   if (!party) return fail('You are not in this challenge.', 403);
   party.reported = winner;
   party.reportedAt = Date.now();
+  if (evidence) party.evidence = evidence;
 
   if (challenge.state === 'funded') challenge.state = 'reported';
 
