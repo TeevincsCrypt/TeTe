@@ -1,10 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
 import { ChallengeRow } from '@/components/challenges/ChallengeRow';
 import { MatchCard } from '@/components/challenges/MatchCard';
-import { BoltIcon, FlagIcon, NoteIcon, SwordsIcon, TrashIcon } from '@/components/shell/icons';
+import { BoltIcon, ChevronRightIcon, FlagIcon, NoteIcon, SwordsIcon, TrashIcon, TrophyIcon } from '@/components/shell/icons';
 import { ButtonLink } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -60,6 +61,22 @@ export default function ChallengesPage() {
         <Eyebrow className="text-faint">Your battles</Eyebrow>
         <h1 className="display mt-1 text-[2rem]">Challenges</h1>
       </header>
+
+      <Link
+        href="/brackets"
+        className="flex items-center gap-3.5 rounded-2xl bg-contrast p-4 transition-transform duration-100 active:scale-[0.98]"
+      >
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent text-on-accent">
+          <TrophyIcon className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[0.9375rem] font-black tracking-tight text-on-contrast">Tournaments</p>
+          <p className="mt-0.5 truncate text-[0.75rem] text-on-contrast/60">
+            4 or 8 players. Single elimination. Winner takes all.
+          </p>
+        </div>
+        <ChevronRightIcon className="size-4 shrink-0 text-on-contrast/50" />
+      </Link>
 
       <SlidingTabs<Tab>
         value={tab}

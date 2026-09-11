@@ -112,9 +112,9 @@ export default function HomePage() {
         Streak, earnings and wins are yours and live. Rank stays empty until ranking ships.
       </p>
 
-      <Section title="Arcade" href="/arcade" action="All games">
+      <Section title="Arcade" href="/arcade" action="See all games">
         <ul className="divide-y divide-line">
-          {GAMES.map((game) => (
+          {GAMES.slice(0, 3).map((game) => (
             <li key={game.id}>
               <Link href="/arcade" className="flex items-center gap-3.5 py-3.5 active:opacity-60">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-contrast text-accent">
@@ -150,22 +150,6 @@ export default function HomePage() {
           ))}
         </div>
       </Section>
-
-      <Link
-        href="/brackets"
-        className="mt-8 flex items-center gap-3.5 rounded-2xl bg-contrast p-4 transition-transform duration-100 active:scale-[0.98]"
-      >
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent text-on-accent">
-          <TrophyIcon className="size-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[0.9375rem] font-black tracking-tight text-on-contrast">Tournaments</p>
-          <p className="mt-0.5 truncate text-[0.75rem] text-on-contrast/60">
-            4 or 8 players. Single elimination. Winner takes all.
-          </p>
-        </div>
-        <ChevronRightIcon className="size-4 shrink-0 text-on-contrast/50" />
-      </Link>
 
       <Section title="Recent wins" href="/challenges" action="See all">
         <RecentWins draftCount={drafts.length} />

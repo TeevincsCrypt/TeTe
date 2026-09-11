@@ -127,6 +127,15 @@ function describe(challenge: Challenge, mySide: Side, previous: string): string 
     case 'reported':
       return me?.reported ? null : `${who} reported a result — your turn`;
     case 'settled':
+      // A bracket round that is not the tournament's last carries its pot
+      // into the next round instead of paying out — see payWinner in
+      // lib/server/challenges.ts — so it needs its own wording rather than
+      // claiming a payout that has not happened yet.
+      if (challenge.bracketId && !challenge.payoutTx) {
+        return challenge.winner === mySide
+          ? 'You won this round — your pot carries into the next one'
+          : `Eliminated — ${who} advances with the pot`;
+      }
       return challenge.winner === mySide
         ? 'You won! The payout has been sent.'
         : `Settled — the pot went to ${who}`;

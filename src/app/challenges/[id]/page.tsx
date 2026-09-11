@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -413,11 +414,33 @@ function ChallengeAction({
 
   if (challenge.state === 'settled') {
     const won = challenge.winner === mySide;
+    // A bracket round settles this way without ever paying out — the pot
+    // carries into the next round instead — for every round except the
+    // tournament's last, so a missing payoutTx on a bracket match is exactly
+    // that carry, not a failure. See payWinner in lib/server/challenges.ts.
+    const carried = Boolean(challenge.bracketId) && !challenge.payoutTx;
+    const champion = Boolean(challenge.bracketId) && !carried;
     return (
       <Sticker tone={won ? 'accent' : 'panel'} className={won ? 'text-on-accent' : undefined}>
-        <p className="text-[1.125rem] font-black">{won ? 'You won' : 'Settled'}</p>
+        <p className="text-[1.125rem] font-black">
+          {carried
+            ? won
+              ? 'You won this round'
+              : 'Eliminated'
+            : champion && won
+              ? 'Tournament champion'
+              : won
+                ? 'You won'
+                : 'Settled'}
+        </p>
         <p className={`mt-1 text-[0.8125rem] ${won ? 'text-on-accent/75' : 'text-muted'}`}>
-          {won ? 'The pot has been sent to your wallet.' : 'The pot was paid to your opponent.'}
+          {carried
+            ? won
+              ? 'Your pot carries into the next round — nothing is paid out until the tournament is won.'
+              : 'Your stake carries your opponent into the next round.'
+            : won
+              ? 'The pot has been sent to your wallet.'
+              : 'The pot was paid to your opponent.'}
         </p>
         {challenge.resolvedBy === 'operator' && (
           <p className={`mt-2 text-[0.75rem] leading-relaxed ${won ? 'text-on-accent/70' : 'text-faint'}`}>
@@ -425,7 +448,15 @@ function ChallengeAction({
             {challenge.resolutionNote ? ` “${challenge.resolutionNote}”` : ''}
           </p>
         )}
-        {won && <PnlCardButton challenge={challenge} mySide={mySide} address={address} />}
+        {challenge.bracketId && (
+          <Link
+            href={`/brackets/${challenge.bracketId}`}
+            className={`mt-3 inline-block text-[0.75rem] font-bold ${won ? 'text-on-accent' : 'text-accent-text'}`}
+          >
+            View tournament →
+          </Link>
+        )}
+        {won && !carried && <PnlCardButton challenge={challenge} mySide={mySide} address={address} />}
       </Sticker>
     );
   }

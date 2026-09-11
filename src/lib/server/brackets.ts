@@ -90,6 +90,21 @@ export async function bracketsFor(address: string, limit = 40): Promise<Bracket[
   return found.filter((b): b is Bracket => b !== null);
 }
 
+/**
+ * Is this the last round of its bracket — the one whose winner is actually
+ * paid, rather than carrying the pot into another round?
+ *
+ * Called from challenges.ts's payWinner before it decides whether to touch
+ * the treasury at all, so a missing bracket fails safe toward `true`: paying
+ * the immediate winner for real is always recoverable, a pot stuck "carried"
+ * against a bracket record that cannot be found is not.
+ */
+export async function isFinalBracketRound(bracketId: string, round: number): Promise<boolean> {
+  const bracket = await readBracket(bracketId);
+  if (!bracket) return true;
+  return round === roundCount(bracket.size) - 1;
+}
+
 function shuffled<T>(items: T[]): T[] {
   const next = [...items];
   for (let i = next.length - 1; i > 0; i -= 1) {
@@ -197,6 +212,11 @@ export async function advanceBracket(challenge: Challenge): Promise<void> {
     const nextRound = match.round + 1;
     const expiresAt = Date.now() + 7 * DAY;
     const title = bracket.title ?? `${formatById(bracket.format).name} tournament`;
+    // Both sides arriving here won their previous round, so both already
+    // carry a pot of exactly bracket.stake * 2^round — that is what "stake"
+    // means for a round beyond the first, and why neither side has anything
+    // left to send: createDirectMatch marks them funded with it directly.
+    const carriedStake = bracket.stake * 2 ** nextRound;
     for (let i = 0; i < finished.length; i += 2) {
       const slotA = finished[i]?.winnerSlot;
       const slotB = finished[i + 1]?.winnerSlot;
@@ -209,13 +229,14 @@ export async function advanceBracket(challenge: Challenge): Promise<void> {
         format: bracket.format,
         title,
         currency: bracket.currency,
-        stake: bracket.stake,
+        stake: carriedStake,
         host: { address: a.address, username: a.username },
         guest: { address: b.address, username: b.username },
         createdAt: Date.now(),
         expiresAt,
         bracketId: bracket.id,
         bracketRound: nextRound,
+        carried: true,
       });
       bracket.matches.push({ round: nextRound, slotA, slotB, challengeId: nextChallenge.id });
     }

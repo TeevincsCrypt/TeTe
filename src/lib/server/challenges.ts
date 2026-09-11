@@ -14,7 +14,7 @@ import type { ChallengeFormatId } from '@/lib/challenges/types';
 import type { StakeCurrency } from '@/types';
 
 import { recordActivity } from './activity';
-import { advanceBracket } from './brackets';
+import { advanceBracket, isFinalBracketRound } from './brackets';
 import { TREASURY_ADDRESS } from './env';
 import { maybeCreditReferral } from './referrals';
 import {
@@ -105,16 +105,37 @@ export async function createDirectMatch(input: {
   expiresAt: number;
   bracketId: string;
   bracketRound: number;
+  /**
+   * Set when both sides' stakes are already covered by a pot carried forward
+   * from a previous round — the match starts straight in `funded`, and
+   * neither side sends anything: the money backing it never left the
+   * treasury, it was only never paid out at the end of the round they won to
+   * get here. See lib/server/brackets.ts for how a round's stake is worked
+   * out, and payWinner below for the other half of this — not paying out a
+   * round that is not the tournament's last.
+   */
+  carried?: boolean;
 }): Promise<Challenge> {
-  const guest = { address: input.guest.address, username: input.guest.username, acceptedAt: input.createdAt };
+  const carriedAt = input.carried ? input.createdAt : undefined;
+  const host: Challenge['host'] = {
+    address: input.host.address,
+    username: input.host.username,
+    ...(input.carried ? { fundingTx: `carried:${input.id}:host`, fundedAt: carriedAt } : {}),
+  };
+  const guest: NonNullable<Challenge['guest']> = {
+    address: input.guest.address,
+    username: input.guest.username,
+    acceptedAt: input.createdAt,
+    ...(input.carried ? { fundingTx: `carried:${input.id}:guest`, fundedAt: carriedAt } : {}),
+  };
   const challenge: Challenge = {
     id: input.id,
-    state: 'accepted',
+    state: input.carried ? 'funded' : 'accepted',
     format: input.format,
     title: input.title,
     currency: input.currency,
     stake: input.stake,
-    host: { address: input.host.address, username: input.host.username },
+    host,
     guest,
     escrowAddress: TREASURY_ADDRESS,
     createdAt: input.createdAt,
@@ -252,10 +273,17 @@ export async function confirmFunding(
 }
 
 /**
- * Send the pot to one side and close the challenge.
+ * Send the pot to one side and close the challenge — unless this round is
+ * one match inside a tournament that is not over yet, in which case the pot
+ * carries into the winner's next round instead of ever reaching a wallet.
+ * See lib/server/brackets.ts: every round after the first is created already
+ * funded with exactly the pot a bracket round like this settles, so carrying
+ * forward here is what makes that possible rather than requiring a fresh
+ * stake every round.
  *
- * Paid first, recorded second, always — a failed send then leaves the
- * challenge payable rather than marked settled with nothing sent.
+ * When a real payout does happen, it is paid first, recorded second, always
+ * — a failed send then leaves the challenge payable rather than marked
+ * settled with nothing sent.
  */
 async function payWinner(
   challenge: Challenge,
@@ -265,36 +293,57 @@ async function payWinner(
   const target = winningSide === 'host' ? challenge.host : challenge.guest;
   if (!target) return fail('The winning player is missing.', 500);
 
-  try {
-    const hash = await payout(target.address, pot(challenge), `tete:payout:${challenge.id}`);
-    challenge.winner = winningSide;
-    challenge.payoutTx = hash;
-    challenge.state = 'settled';
-    if (resolvedBy) challenge.resolvedBy = resolvedBy;
-    await save(challenge);
-    await recordActivity(target.address, {
-      kind: 'payout',
-      luna: pot(challenge),
-      label: `Won: ${challenge.title?.trim() || challenge.format}`,
-      href: `/challenges/${challenge.id}`,
-    });
+  let carryForward = false;
+  if (challenge.bracketId !== undefined && challenge.bracketRound !== undefined) {
+    try {
+      carryForward = !(await isFinalBracketRound(challenge.bracketId, challenge.bracketRound));
+    } catch {
+      // Fail safe: if we cannot tell whether this was the last round, pay the
+      // immediate winner for real rather than risk stranding money in a
+      // carried state nothing can resolve.
+      carryForward = false;
+    }
+  }
 
-    // Best-effort side effects of a settlement that has already, genuinely,
-    // happened — none of these can turn a real payout into a failure.
+  if (!carryForward) {
+    try {
+      challenge.payoutTx = await payout(target.address, pot(challenge), `tete:payout:${challenge.id}`);
+    } catch (cause: unknown) {
+      await save(challenge);
+      return fail(cause instanceof Error ? cause.message : 'The payout failed.', 502);
+    }
+  }
+
+  challenge.winner = winningSide;
+  challenge.state = 'settled';
+  if (resolvedBy) challenge.resolvedBy = resolvedBy;
+  await save(challenge);
+  await recordActivity(target.address, {
+    kind: 'payout',
+    luna: carryForward ? 0 : pot(challenge),
+    label: carryForward
+      ? `Advanced: ${challenge.title?.trim() || challenge.format}`
+      : `Won: ${challenge.title?.trim() || challenge.format}`,
+    href: `/challenges/${challenge.id}`,
+  });
+
+  // Best-effort side effects of a settlement that has already, genuinely,
+  // happened — none of these can turn a real payout into a failure.
+  // A carried round is real news about a match, but not a "win" in the sense
+  // this public feed shows: nothing actually left the treasury, so it stays
+  // out rather than crowding out real payouts with one that has not happened.
+  if (!carryForward) {
     try {
       await push(RECENT_SETTLED_LIST, challenge.id, RECENT_SETTLED_CAP);
     } catch {
       /* The feed missing one entry costs nothing the payout itself did not already survive. */
     }
-    await maybeCreditReferral(challenge.host.address);
-    if (challenge.guest) await maybeCreditReferral(challenge.guest.address);
-    if (challenge.bracketId) await advanceBracket(challenge);
-
-    return { ok: true, value: challenge };
-  } catch (cause: unknown) {
-    await save(challenge);
-    return fail(cause instanceof Error ? cause.message : 'The payout failed.', 502);
   }
+  await maybeCreditReferral(challenge.host.address);
+  if (challenge.guest) await maybeCreditReferral(challenge.guest.address);
+  if (challenge.bracketId) await advanceBracket(challenge);
+
+  return { ok: true, value: challenge };
 }
 
 /**

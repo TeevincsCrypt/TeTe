@@ -11,8 +11,9 @@ import { PhaseNote } from '@/components/ui/PhaseNote';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { ApiError, createBracket, fetchStatus, type BackendStatus } from '@/lib/api/client';
 import { BRACKET_SIZES, type BracketSize } from '@/lib/bracket/types';
-import { CHALLENGE_FORMATS, type ChallengeFormatId } from '@/lib/challenges/types';
+import { CHALLENGE_FORMATS, formatById, type ChallengeFormatId } from '@/lib/challenges/types';
 import { nimToLuna } from '@/lib/nimiq/units';
+import { pushNotice } from '@/lib/notifications/notifications';
 import { useMiniApp } from '@/state/mini-app-provider';
 import type { StakeCurrency } from '@/types';
 
@@ -68,6 +69,12 @@ export default function CreateBracketPage() {
         stake: toSmallestUnit(currency, stakeValue),
         size,
       });
+      pushNotice(
+        'challenge',
+        'Tournament started',
+        `${formatById(format).name} · ${size} players · waiting for the field to fill`,
+        `/brackets/${bracket.id}`,
+      );
       router.push(`/brackets/${bracket.id}`);
     } catch (cause: unknown) {
       setError(cause instanceof ApiError ? cause.message : 'Could not start that tournament.');
