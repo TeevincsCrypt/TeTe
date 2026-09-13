@@ -34,7 +34,20 @@ import { rpc, transactionsFor, type RpcTransaction } from './rpc';
  */
 const MIN_CONFIRMATIONS = 1;
 
-export class TreasuryError extends Error {}
+export class TreasuryError extends Error {
+  /**
+   * Set only when a transaction was actually broadcast and accepted by the
+   * node before this failed — i.e. this failure means "could not confirm it
+   * in time," not "nothing happened." A caller that sees a hash here should
+   * treat the send as done rather than retrying it, which would risk paying
+   * out the same money twice once the slow-to-index original lands anyway.
+   */
+  readonly hash?: string;
+  constructor(message: string, hash?: string) {
+    super(message);
+    this.hash = hash;
+  }
+}
 
 function assertReady(): void {
   if (!hasTreasury) {
@@ -422,15 +435,25 @@ function txTimeMs(tx: RpcTransaction): number | null {
  * So a payout is not treated as real until it is found on chain.
  */
 async function waitForOnChain(hash: string, address: string): Promise<void> {
-  const attempts = 10;
+  const attempts = 14;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const transactions = await transactionsFor(address, 20);
+    // A busy treasury address can rack up other transactions between one
+    // send and the next; reading only the most recent 20 meant a genuinely
+    // successful payout could scroll out of view before this ever saw it,
+    // which is the likely reason this ever reported "unconfirmed" for a
+    // transaction that was actually fine. 100 gives real headroom.
+    const transactions = await transactionsFor(address, 100);
     const found = transactions.find((tx) => tx.hash === hash);
     if (found && (found.confirmations ?? 0) >= 1) return;
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
+  // The node accepted this and gave back a hash — it did not silently vanish,
+  // this call simply ran out of patience waiting to see it confirmed. Callers
+  // get that hash so they can treat the send as done rather than retrying it,
+  // which would risk paying this out a second time once the original lands.
   throw new TreasuryError(
-    'The payout was submitted but never confirmed on chain. Nothing was recorded as sent.',
+    'The payout was submitted but could not be confirmed on chain within this request.',
+    hash,
   );
 }
 

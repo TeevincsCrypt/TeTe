@@ -17,7 +17,7 @@ import type { StakeCurrency } from '@/types';
 export const BRACKET_SIZES = [4, 8] as const;
 export type BracketSize = (typeof BRACKET_SIZES)[number];
 
-export type BracketState = 'open' | 'live' | 'complete';
+export type BracketState = 'open' | 'live' | 'complete' | 'cancelled';
 
 export interface BracketEntrant {
   address: string;
@@ -45,6 +45,14 @@ export interface Bracket {
   stake: number;
   size: BracketSize;
   state: BracketState;
+  /** The player who started this tournament — the only one who can call it off. */
+  hostAddress: string;
+  /**
+   * A private tournament never appears on the public open board — the only
+   * way in is the direct link the host shares. Joining, seeding, funding,
+   * disputes and payout are all otherwise identical to a public one.
+   */
+  private?: boolean;
   entrants: BracketEntrant[];
   matches: BracketMatch[];
   /** Index into `entrants`, once the final match has settled. */
@@ -90,4 +98,5 @@ export const BRACKET_STATE_LABEL: Record<BracketState, string> = {
   open: 'Filling up',
   live: 'In progress',
   complete: 'Complete',
+  cancelled: 'Cancelled',
 };

@@ -17,6 +17,8 @@ const KEY = 'tete.bracket-watch.v1';
 const READY_KEY = 'tete.bracket-watch.ready.v1';
 /** A marker recorded alongside seen match ids once a bracket's champion has been announced. */
 const CHAMPION_MARK = '__champion__';
+/** Same idea, for the tournament having been called off. */
+const CANCELLED_MARK = '__cancelled__';
 
 function readSeen(): Record<string, string[]> {
   if (typeof window === 'undefined') return {};
@@ -109,6 +111,19 @@ export function checkBracketUpdates(brackets: Bracket[], address: string): void 
           iWon
             ? 'The full pot has been sent to your wallet.'
             : `${nameOf(bracket.entrants[bracket.championSlot ?? -1])} took the tournament.`,
+          `/brackets/${bracket.id}`,
+        );
+      }
+    }
+
+    if (bracket.state === 'cancelled' && !knownIds.has(CANCELLED_MARK)) {
+      nextKnown.push(CANCELLED_MARK);
+      changed = true;
+      if (baselined) {
+        pushNotice(
+          'challenge',
+          'Tournament cancelled',
+          `${bracket.title?.trim() || `${bracket.format} tournament`} was called off. Any stake you had in it has been refunded.`,
           `/brackets/${bracket.id}`,
         );
       }

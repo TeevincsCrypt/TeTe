@@ -16,12 +16,14 @@ import type { StakeCurrency } from '@/types';
 import { recordActivity } from './activity';
 import { advanceBracket, isFinalBracketRound } from './brackets';
 import { TREASURY_ADDRESS } from './env';
+import { creditLeaderboard } from './leaderboard';
 import { maybeCreditReferral } from './referrals';
 import {
   explainMissingFunding,
   findFunding,
   payout,
   taggedStakes,
+  TreasuryError,
   treasuryHistory,
   verifyStakeByHash,
 } from './treasury';
@@ -309,8 +311,17 @@ async function payWinner(
     try {
       challenge.payoutTx = await payout(target.address, pot(challenge), `tete:payout:${challenge.id}`);
     } catch (cause: unknown) {
-      await save(challenge);
-      return fail(cause instanceof Error ? cause.message : 'The payout failed.', 502);
+      // A hash here means the treasury did broadcast this — only the
+      // confirmation check timed out. Leaving the challenge unsettled would
+      // let a retry (re-reporting, or re-resolving the same dispute) call
+      // payout() again for the same money, so this is recorded as sent,
+      // exactly like the success path just above.
+      if (cause instanceof TreasuryError && cause.hash) {
+        challenge.payoutTx = cause.hash;
+      } else {
+        await save(challenge);
+        return fail(cause instanceof Error ? cause.message : 'The payout failed.', 502);
+      }
     }
   }
 
@@ -338,6 +349,7 @@ async function payWinner(
     } catch {
       /* The feed missing one entry costs nothing the payout itself did not already survive. */
     }
+    await creditLeaderboard(target.address, target.username, pot(challenge));
   }
   await maybeCreditReferral(challenge.host.address);
   if (challenge.guest) await maybeCreditReferral(challenge.guest.address);
@@ -368,6 +380,20 @@ async function refundStakes(challenge: Challenge, label: string): Promise<Outcom
         href: `/challenges/${challenge.id}`,
       });
     } catch (cause: unknown) {
+      // A hash here means this refund was actually broadcast — only the
+      // confirmation check timed out. Leaving it retryable would risk
+      // sending the same refund twice once the slow-to-index original
+      // lands, so it is recorded as sent, same as the line above.
+      if (cause instanceof TreasuryError && cause.hash) {
+        party.refundTx = cause.hash;
+        await recordActivity(party.address, {
+          kind: 'payout',
+          luna: challenge.stake,
+          label: `${label}: ${challenge.title?.trim() || challenge.format}`,
+          href: `/challenges/${challenge.id}`,
+        });
+        continue;
+      }
       await save(challenge);
       return fail(
         cause instanceof Error
@@ -652,6 +678,34 @@ export async function cancelChallenge(id: string, address: string): Promise<Outc
 
   challenge.state = 'refunded';
   challenge.cancelledBy = side;
+  await save(challenge);
+  return { ok: true, value: challenge };
+}
+
+/**
+ * Call off one bracket round on the tournament's own authority rather than a
+ * player's — used when the whole tournament is cancelled. Same refund as an
+ * ordinary cancellation, just without requiring the caller to be one of this
+ * specific match's own two players: that authority was already checked one
+ * level up, against the bracket's host, in lib/server/brackets.ts.
+ *
+ * A match that already has a result reported is left alone rather than
+ * force-refunded — that report is real information, and the two players in
+ * it can still settle it normally even though the tournament around it has
+ * been called off. Already-terminal states are a no-op, not an error, so a
+ * caller sweeping every match in a bracket does not need to special-case
+ * ones that had already settled.
+ */
+export async function cancelBracketMatch(id: string): Promise<Outcome<Challenge>> {
+  const challenge = await readChallenge(id);
+  if (!challenge) return fail('No such challenge.', 404);
+  if (challenge.host.reported || challenge.guest?.reported) return { ok: true, value: challenge };
+  if (!canTransition(challenge.state, 'refunded')) return { ok: true, value: challenge };
+
+  const refunded = await refundStakes(challenge, 'Tournament called off');
+  if (!refunded.ok) return refunded;
+
+  challenge.state = 'refunded';
   await save(challenge);
   return { ok: true, value: challenge };
 }

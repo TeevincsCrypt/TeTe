@@ -36,9 +36,19 @@ export const MAX_PAYOUT_LUNA = Number(req('NIMIQ_MAX_PAYOUT_LUNA') ?? 500_000_00
  */
 export const ADMIN_TOKEN = req('NIMIQ_ADMIN_TOKEN');
 
+/**
+ * Bearer token Vercel Cron is configured to send with its scheduled request
+ * (see vercel.json) to /api/cron/weekly-prizes. As sensitive as the admin
+ * token: anyone who has it can trigger a real payout of treasury funds to
+ * that week's top 3, though never more than once per week each — see the
+ * "already paid" guard in lib/server/leaderboard.ts.
+ */
+export const CRON_SECRET = req('CRON_SECRET');
+
 export const hasTreasury = Boolean(RPC_URL && TREASURY_ADDRESS && TREASURY_PASSPHRASE);
 export const hasDurableStore = Boolean(KV_URL && KV_TOKEN);
 export const hasAdmin = Boolean(ADMIN_TOKEN && hasDurableStore);
+export const hasCron = Boolean(CRON_SECRET && hasDurableStore && hasTreasury);
 /**
  * A node to read the chain with. Enough to look up a balance, which is why it
  * is separate from `hasTreasury` — reading needs no wallet and no passphrase.
