@@ -292,7 +292,15 @@ export async function withdrawRewards(address: string) {
 /** Start a tournament, entering yourself as its first player. */
 export async function createBracket(
   address: string,
-  input: { format: string; title?: string; currency: string; stake: number; size: BracketSize },
+  input: {
+    format: string;
+    title?: string;
+    currency: string;
+    stake: number;
+    size: BracketSize;
+    /** Keep it off the public open board — joinable only via its direct link. */
+    private?: boolean;
+  },
 ): Promise<Bracket> {
   const auth = await signIntent(address, 'create-bracket');
   const body = await post<{ bracket: Bracket }>('/api/brackets', { ...auth, ...input });
@@ -321,6 +329,24 @@ export async function fetchBracket(id: string): Promise<Bracket | null> {
 export async function joinBracket(address: string, id: string): Promise<Bracket> {
   const auth = await signIntent(address, `join-bracket:${id}`);
   const body = await post<{ bracket: Bracket }>(`/api/brackets/${id}`, { ...auth, action: 'join' });
+  return body.bracket;
+}
+
+/** Remove a player from your own tournament, before it has started. */
+export async function kickFromBracket(address: string, id: string, target: string): Promise<Bracket> {
+  const auth = await signIntent(address, `kick-bracket:${id}:${target}`);
+  const body = await post<{ bracket: Bracket }>(`/api/brackets/${id}`, { ...auth, action: 'kick', target });
+  return body.bracket;
+}
+
+/**
+ * Call a tournament off. Only the player who started it can — the server
+ * checks that, this just signs the request. Any match still undecided gets
+ * refunded; anything already reported is left to settle on its own.
+ */
+export async function cancelBracket(address: string, id: string): Promise<Bracket> {
+  const auth = await signIntent(address, `cancel-bracket:${id}`);
+  const body = await post<{ bracket: Bracket }>(`/api/brackets/${id}`, { ...auth, action: 'cancel' });
   return body.bracket;
 }
 
@@ -455,7 +481,7 @@ export async function fetchStatus(): Promise<BackendStatus> {
   }
 }
 
-export type ActivityKind = 'tip-in' | 'tip-out' | 'reward' | 'check-in' | 'withdrawal' | 'payout';
+export type ActivityKind = 'tip-in' | 'tip-out' | 'reward' | 'check-in' | 'withdrawal' | 'payout' | 'prize';
 
 export interface ActivityEntry {
   id: string;
@@ -485,4 +511,28 @@ export async function fetchActivity(address: string): Promise<ActivityEntry[] | 
   } catch {
     return null;
   }
+}
+
+export interface LeaderboardEntry {
+  address: string;
+  username?: string;
+  luna: number;
+}
+
+/**
+ * Daily or weekly standings by real NIM won. The weekly top 3 are paid 100,
+ * 50 and 30 NIM automatically at the end of the week — see
+ * lib/server/leaderboard.ts.
+ */
+export async function fetchLeaderboard(period: 'daily' | 'weekly'): Promise<LeaderboardEntry[]> {
+  const body = await get<{ entries: LeaderboardEntry[] }>(`/api/leaderboard?period=${period}`);
+  return body.entries;
+}
+
+/** Where this address currently stands in a period — 1-based, or null if not yet ranked. */
+export async function fetchMyRank(period: 'daily' | 'weekly', address: string): Promise<number | null> {
+  const body = await get<{ rank: number | null }>(
+    `/api/leaderboard?period=${period}&address=${encodeURIComponent(address)}`,
+  );
+  return body.rank ?? null;
 }

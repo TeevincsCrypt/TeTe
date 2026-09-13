@@ -16,7 +16,7 @@ import { createId } from '@/lib/ids';
 import { compactAddress } from '@/lib/nimiq/address';
 import type { StakeCurrency } from '@/types';
 
-import { createDirectMatch } from './challenges';
+import { cancelBracketMatch, createDirectMatch } from './challenges';
 import { get, list, push, set } from './store';
 
 /**
@@ -56,6 +56,8 @@ export async function createBracket(input: {
   stake: number;
   size: BracketSize;
   host: { address: string; username?: string };
+  /** Keep this off the public open board — joinable only via its direct link. */
+  private?: boolean;
 }): Promise<Bracket> {
   const bracket: Bracket = {
     id: input.id,
@@ -65,22 +67,27 @@ export async function createBracket(input: {
     stake: input.stake,
     size: input.size,
     state: 'open',
+    hostAddress: input.host.address,
+    private: input.private || undefined,
     entrants: [{ address: input.host.address, username: input.host.username, joinedAt: Date.now() }],
     matches: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
   await save(bracket);
-  await push(OPEN_BRACKETS, bracket.id);
+  // A private tournament is never indexed onto the public board at all —
+  // the direct link is the only way anyone finds it, which is the whole
+  // point, rather than relying on a read-time filter alone to hide it.
+  if (!bracket.private) await push(OPEN_BRACKETS, bracket.id);
   await push(bracketPlayerList(input.host.address), bracket.id);
   return bracket;
 }
 
-/** Tournaments still filling up — the open board. */
+/** Public tournaments still filling up — the open board. Private ones never appear here. */
 export async function listOpenBrackets(limit = 40): Promise<Bracket[]> {
   const ids = await list(OPEN_BRACKETS, limit);
   const found = await Promise.all(ids.map(readBracket));
-  return found.filter((b): b is Bracket => b !== null && b.state === 'open');
+  return found.filter((b): b is Bracket => b !== null && b.state === 'open' && !b.private);
 }
 
 /** Every tournament this address has entered, in any state. */
@@ -164,7 +171,14 @@ export async function joinBracket(id: string, address: string, username?: string
   const bracket = await readBracket(id);
   if (!bracket) return fail('No such tournament.', 404);
   if (bracket.state !== 'open') {
-    return fail(`This tournament is already ${bracket.state === 'live' ? 'in progress' : 'complete'}.`, 409);
+    return fail(
+      bracket.state === 'live'
+        ? 'This tournament is already in progress.'
+        : bracket.state === 'cancelled'
+          ? 'This tournament has been called off.'
+          : 'This tournament is already complete.',
+      409,
+    );
   }
   if (bracket.entrants.some((entrant) => compactAddress(entrant.address) === compactAddress(address))) {
     return fail("You're already in this tournament.", 409);
@@ -179,6 +193,71 @@ export async function joinBracket(id: string, address: string, username?: string
 }
 
 /**
+ * Remove a player the host does not want in their tournament.
+ *
+ * Only while the bracket is still `open` — once it fills and starts, every
+ * entrant is already paired into a real match, and removing someone at that
+ * point would be cancelling their match, not a roster change; cancelBracket
+ * is the tool for that. The host cannot remove themselves either — if they
+ * no longer want to run it, calling the whole thing off is the right move.
+ */
+export async function kickFromBracket(id: string, hostAddress: string, target: string): Promise<Outcome<Bracket>> {
+  const bracket = await readBracket(id);
+  if (!bracket) return fail('No such tournament.', 404);
+  if (compactAddress(bracket.hostAddress) !== compactAddress(hostAddress)) {
+    return fail('Only the player who started this tournament can remove someone.', 403);
+  }
+  if (bracket.state !== 'open') {
+    return fail('Players can only be removed before the tournament starts.', 409);
+  }
+  if (compactAddress(target) === compactAddress(hostAddress)) {
+    return fail('You cannot remove yourself — call the tournament off instead.', 400);
+  }
+
+  const before = bracket.entrants.length;
+  bracket.entrants = bracket.entrants.filter(
+    (entrant) => compactAddress(entrant.address) !== compactAddress(target),
+  );
+  if (bracket.entrants.length === before) {
+    return fail('That player is not in this tournament.', 404);
+  }
+
+  return { ok: true, value: await save(bracket) };
+}
+
+/**
+ * Call the whole tournament off. Only the player who started it can — the
+ * same authority a challenge's own host has over cancelling it, just scoped
+ * to everything this bracket has created rather than one match.
+ *
+ * An open bracket has nothing staked yet, so this is free. A live one may
+ * have real money sitting in whichever matches are still undecided; each of
+ * those is refunded exactly like an ordinary cancelled challenge — including
+ * a carried-forward pot, since that is still real money, just sitting under
+ * a "carried" marker instead of a fresh transaction. A match that already
+ * has a result reported is left alone: the tournament stops, but the two
+ * players in that one match still get to settle it normally.
+ */
+export async function cancelBracket(id: string, address: string): Promise<Outcome<Bracket>> {
+  const bracket = await readBracket(id);
+  if (!bracket) return fail('No such tournament.', 404);
+  if (compactAddress(bracket.hostAddress) !== compactAddress(address)) {
+    return fail('Only the player who started this tournament can call it off.', 403);
+  }
+  if (bracket.state === 'complete') return fail('This tournament is already complete.', 409);
+  if (bracket.state === 'cancelled') return { ok: true, value: bracket };
+
+  for (const match of bracket.matches) {
+    if (!match.challengeId || match.winnerSlot !== undefined) continue;
+    const result = await cancelBracketMatch(match.challengeId);
+    if (!result.ok) return result;
+  }
+
+  bracket.state = 'cancelled';
+  return { ok: true, value: await save(bracket) };
+}
+
+/**
  * Notice a bracket match's result and, once its whole round has settled,
  * either crown a champion or create the next round's matches.
  *
@@ -190,7 +269,9 @@ export async function advanceBracket(challenge: Challenge): Promise<void> {
   if (!challenge.bracketId || !challenge.winner) return;
   try {
     const bracket = await readBracket(challenge.bracketId);
-    if (!bracket) return;
+    // A cancelled tournament stops here even if one dangling match — left
+    // alone above because it already had a result reported — settles later.
+    if (!bracket || bracket.state !== 'live') return;
 
     const match = bracket.matches.find((m) => m.challengeId === challenge.id);
     if (!match || match.winnerSlot !== undefined) return;

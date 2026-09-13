@@ -18,10 +18,11 @@ import { useMiniApp } from '@/state/mini-app-provider';
 
 type Tab = 'open' | 'mine';
 
-const STATE_TONE: Record<BracketState, 'neutral' | 'accent' | 'positive'> = {
+const STATE_TONE: Record<BracketState, 'neutral' | 'accent' | 'positive' | 'warn'> = {
   open: 'neutral',
   live: 'accent',
   complete: 'positive',
+  cancelled: 'warn',
 };
 
 /**

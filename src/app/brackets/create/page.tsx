@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { FormatArt } from '@/components/challenges/FormatArt';
-import { ChevronLeftIcon } from '@/components/shell/icons';
+import { ChevronLeftIcon, GlobeIcon, TargetIcon } from '@/components/shell/icons';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
 import { PhaseNote } from '@/components/ui/PhaseNote';
@@ -39,6 +39,7 @@ export default function CreateBracketPage() {
   const [size, setSize] = useState<BracketSize>(4);
   const [currency, setCurrency] = useState<StakeCurrency>('NIM');
   const [stake, setStake] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,6 +69,7 @@ export default function CreateBracketPage() {
         currency,
         stake: toSmallestUnit(currency, stakeValue),
         size,
+        private: isPrivate,
       });
       pushNotice(
         'challenge',
@@ -213,6 +215,62 @@ export default function CreateBracketPage() {
           Every player stakes this amount for each match they play. The winner of each round
           takes both stakes, same as any other challenge.
         </p>
+      </div>
+
+      <div className="space-y-3">
+        <Eyebrow className="text-faint">Who can join</Eyebrow>
+        <div className="space-y-2.5">
+          <button
+            type="button"
+            onClick={() => setIsPrivate(false)}
+            aria-pressed={!isPrivate}
+            className={cn(
+              'flex w-full items-center gap-3.5 rounded-2xl p-4 text-left transition-all duration-150 active:scale-[0.98]',
+              !isPrivate ? 'bg-contrast text-on-contrast' : 'bg-panel-2 text-text',
+            )}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                'flex size-10 shrink-0 items-center justify-center rounded-xl',
+                !isPrivate ? 'bg-on-contrast/15 text-accent' : 'bg-panel-2 text-muted',
+              )}
+            >
+              <GlobeIcon className="size-5" />
+            </span>
+            <span className="flex-1">
+              <span className="block text-[0.9375rem] font-black tracking-tight">Public</span>
+              <span className={cn('mt-0.5 block text-[0.75rem] leading-snug', !isPrivate ? 'text-on-contrast/70' : 'text-faint')}>
+                Listed on the open tournament board, anyone can join.
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsPrivate(true)}
+            aria-pressed={isPrivate}
+            className={cn(
+              'flex w-full items-center gap-3.5 rounded-2xl p-4 text-left transition-all duration-150 active:scale-[0.98]',
+              isPrivate ? 'bg-contrast text-on-contrast' : 'bg-panel-2 text-text',
+            )}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                'flex size-10 shrink-0 items-center justify-center rounded-xl',
+                isPrivate ? 'bg-on-contrast/15 text-accent' : 'bg-panel-2 text-muted',
+              )}
+            >
+              <TargetIcon className="size-5" />
+            </span>
+            <span className="flex-1">
+              <span className="block text-[0.9375rem] font-black tracking-tight">Private</span>
+              <span className={cn('mt-0.5 block text-[0.75rem] leading-snug', isPrivate ? 'text-on-contrast/70' : 'text-faint')}>
+                Hidden from the board — only people you send the link to can join.
+              </span>
+            </span>
+          </button>
+        </div>
       </div>
 
       <div className="space-y-3">

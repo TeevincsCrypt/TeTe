@@ -60,6 +60,7 @@ export async function POST(request: Request) {
     stake,
     size: size as never,
     host: { address: auth.address, username: me?.username },
+    private: body.private === true,
   });
 
   return NextResponse.json({ bracket });

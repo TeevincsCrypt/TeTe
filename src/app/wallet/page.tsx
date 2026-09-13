@@ -507,6 +507,7 @@ const KIND_LABEL: Record<ActivityKind, string> = {
   'check-in': 'Daily check-in',
   withdrawal: 'Withdrawal',
   payout: 'Challenge won',
+  prize: 'Leaderboard prize',
 };
 
 /**

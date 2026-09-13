@@ -11,7 +11,8 @@
 
 let ctx: AudioContext | null = null;
 
-function audio(): AudioContext | null {
+/** The one shared AudioContext — sfx and music both play through this, not one each. */
+export function audio(): AudioContext | null {
   if (typeof window === 'undefined') return null;
   const Ctor =
     window.AudioContext ??

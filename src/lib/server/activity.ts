@@ -22,7 +22,8 @@ export type ActivityKind =
   | 'reward'
   | 'check-in'
   | 'withdrawal'
-  | 'payout';
+  | 'payout'
+  | 'prize';
 
 export interface ActivityEntry {
   id: string;

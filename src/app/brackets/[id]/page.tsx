@@ -5,14 +5,14 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { FormatArt } from '@/components/challenges/FormatArt';
-import { ChevronLeftIcon, CheckIcon, CrownIcon } from '@/components/shell/icons';
+import { CheckIcon, ChevronLeftIcon, CloseIcon, CrownIcon } from '@/components/shell/icons';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { PhaseNote } from '@/components/ui/PhaseNote';
 import { PlayerFace } from '@/components/ui/PlayerFace';
 import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { ConnectPanel } from '@/components/wallet/ConnectPanel';
-import { ApiError, fetchBracket, joinBracket } from '@/lib/api/client';
+import { ApiError, cancelBracket, fetchBracket, joinBracket, kickFromBracket } from '@/lib/api/client';
 import {
   matchesInRound,
   roundCount,
@@ -38,6 +38,8 @@ export default function BracketDetailPage() {
   const [bracket, setBracket] = useState<Bracket | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [kicking, setKicking] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -73,6 +75,7 @@ export default function BracketDetailPage() {
 
   const address = nimiq.address ? compactAddress(nimiq.address) : null;
   const iAmIn = address ? bracket.entrants.some((e) => compactAddress(e.address) === address) : false;
+  const isHost = address !== null && compactAddress(bracket.hostAddress) === address;
   const format = formatById(bracket.format);
   const title = bracket.title?.trim() || `${format.name} tournament`;
   const champion = bracket.championSlot !== undefined ? bracket.entrants[bracket.championSlot] : undefined;
@@ -99,6 +102,41 @@ export default function BracketDetailPage() {
     }
   }
 
+  async function cancel() {
+    if (!nimiq.address) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const cancelled = await cancelBracket(nimiq.address, id);
+      setBracket(cancelled);
+      setConfirmCancel(false);
+      pushNotice(
+        'challenge',
+        'Tournament cancelled',
+        `${title} — any match still in progress has been refunded.`,
+        `/brackets/${id}`,
+      );
+    } catch (cause: unknown) {
+      setError(cause instanceof ApiError ? cause.message : 'Could not cancel this tournament.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function kick(target: string, label: string) {
+    if (!nimiq.address) return;
+    setKicking(target);
+    setError(null);
+    try {
+      setBracket(await kickFromBracket(nimiq.address, id, target));
+      pushNotice('challenge', 'Player removed', `${label} was removed from ${title}.`, `/brackets/${id}`);
+    } catch (cause: unknown) {
+      setError(cause instanceof ApiError ? cause.message : 'Could not remove that player.');
+    } finally {
+      setKicking(null);
+    }
+  }
+
   return (
     <div className="pt-2">
       <Header onBack={() => router.push('/brackets')} />
@@ -107,12 +145,25 @@ export default function BracketDetailPage() {
         <FormatArt id={bracket.format} rounded="rounded-none" className="h-32 w-full" />
         <div className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <Chip tone={bracket.state === 'complete' ? 'positive' : bracket.state === 'live' ? 'accent' : 'neutral'}>
+            <Chip
+              tone={
+                bracket.state === 'complete'
+                  ? 'positive'
+                  : bracket.state === 'live'
+                    ? 'accent'
+                    : bracket.state === 'cancelled'
+                      ? 'warn'
+                      : 'neutral'
+              }
+            >
               {BRACKET_STATE_LABEL[bracket.state]}
             </Chip>
-            <span className="text-[0.75rem] font-semibold text-on-contrast/50">
-              {bracket.entrants.length}/{bracket.size} players
-            </span>
+            <div className="flex items-center gap-2">
+              {bracket.private && <Chip tone="inverse">Private</Chip>}
+              <span className="text-[0.75rem] font-semibold text-on-contrast/50">
+                {bracket.entrants.length}/{bracket.size} players
+              </span>
+            </div>
           </div>
           <h1 className="display mt-3 text-[1.75rem] text-on-contrast">{title}</h1>
 
@@ -155,12 +206,58 @@ export default function BracketDetailPage() {
           </Button>
         ) : bracket.state === 'open' && iAmIn ? (
           <ShareCard id={bracket.id} entrants={bracket.entrants.length} size={bracket.size} />
+        ) : bracket.state === 'cancelled' ? (
+          <Sticker tone="panel">
+            <p className="text-[0.875rem] font-bold">This tournament was called off</p>
+            <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-muted">
+              Any match that was still undecided has been refunded to whoever staked it. A
+              match that had already settled, or already had a result reported, is unaffected.
+            </p>
+          </Sticker>
         ) : null}
       </div>
 
+      {isHost && (bracket.state === 'open' || bracket.state === 'live') && (
+        <div className="mt-4">
+          {!confirmCancel ? (
+            <button
+              type="button"
+              onClick={() => setConfirmCancel(true)}
+              className="text-[0.75rem] font-bold text-faint underline underline-offset-2 active:text-negative"
+            >
+              Call off this tournament
+            </button>
+          ) : (
+            <Sticker tone="panel">
+              <p className="text-[0.875rem] font-bold text-negative">Call this tournament off?</p>
+              <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-muted">
+                {bracket.state === 'open'
+                  ? 'Nothing has been staked yet, so this is free — the tournament just closes.'
+                  : 'Every match still undecided is refunded to whoever staked it, carried pot included. A match that already has a result reported is left to settle on its own.'}
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2.5">
+                <Button variant="outline" onClick={() => setConfirmCancel(false)}>
+                  Never mind
+                </Button>
+                <Button variant="contrast" onClick={cancel} loading={busy}>
+                  Yes, call it off
+                </Button>
+              </div>
+            </Sticker>
+          )}
+        </div>
+      )}
+
       <div className="mt-6 space-y-5">
         <Eyebrow className="text-faint">Players</Eyebrow>
-        <EntrantList entrants={bracket.entrants} size={bracket.size} />
+        <EntrantList
+          entrants={bracket.entrants}
+          size={bracket.size}
+          canKick={isHost && bracket.state === 'open'}
+          hostAddress={bracket.hostAddress}
+          kicking={kicking}
+          onKick={kick}
+        />
       </div>
 
       {bracket.matches.length > 0 && (
@@ -190,21 +287,48 @@ function Header({ onBack }: { onBack: () => void }) {
   );
 }
 
-function EntrantList({ entrants, size }: { entrants: BracketEntrant[]; size: number }) {
+function EntrantList({
+  entrants,
+  size,
+  canKick = false,
+  hostAddress,
+  kicking = null,
+  onKick,
+}: {
+  entrants: BracketEntrant[];
+  size: number;
+  canKick?: boolean;
+  hostAddress?: string;
+  kicking?: string | null;
+  onKick?: (target: string, label: string) => void;
+}) {
   const empties = Array.from({ length: Math.max(0, size - entrants.length) });
   return (
     <ul className="-mx-1 flex flex-wrap gap-2 px-1">
-      {entrants.map((entrant) => (
-        <li
-          key={entrant.address}
-          className="flex items-center gap-2 rounded-full bg-panel-2 py-1.5 pl-1.5 pr-3.5"
-        >
-          <PlayerFace address={entrant.address} size={26} />
-          <span className="text-[0.8125rem] font-bold">
-            {entrant.username ? `@${entrant.username}` : shortenAddress(entrant.address)}
-          </span>
-        </li>
-      ))}
+      {entrants.map((entrant) => {
+        const label = entrant.username ? `@${entrant.username}` : shortenAddress(entrant.address);
+        const removable = canKick && hostAddress && compactAddress(entrant.address) !== compactAddress(hostAddress);
+        return (
+          <li
+            key={entrant.address}
+            className="flex items-center gap-2 rounded-full bg-panel-2 py-1.5 pl-1.5 pr-3.5"
+          >
+            <PlayerFace address={entrant.address} size={26} />
+            <span className="text-[0.8125rem] font-bold">{label}</span>
+            {removable && (
+              <button
+                type="button"
+                onClick={() => onKick?.(entrant.address, label)}
+                disabled={kicking === entrant.address}
+                aria-label={`Remove ${label}`}
+                className="-mr-1 flex size-5 shrink-0 items-center justify-center rounded-full text-faint transition-colors active:text-negative disabled:opacity-40"
+              >
+                <CloseIcon className="size-3" />
+              </button>
+            )}
+          </li>
+        );
+      })}
       {empties.map((_, i) => (
         <li
           key={`empty-${i}`}

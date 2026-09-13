@@ -21,7 +21,7 @@ import { PlayerFace } from '@/components/ui/PlayerFace';
 import { BalanceRail } from '@/components/wallet/BalanceRail';
 import { ConnectPanel } from '@/components/wallet/ConnectPanel';
 import { GAMES } from '@/lib/arcade/games';
-import { fetchRecentSettled } from '@/lib/api/client';
+import { fetchMyRank, fetchRecentSettled } from '@/lib/api/client';
 import { CHALLENGE_FORMATS, formatById } from '@/lib/challenges/types';
 import { pot, type Challenge } from '@/lib/escrow/types';
 import { shortenAddress } from '@/lib/nimiq/address';
@@ -53,6 +53,27 @@ export default function HomePage() {
     const ref = new URLSearchParams(window.location.search).get('ref');
     if (ref) rememberReferredBy(ref);
   }, []);
+
+  // The weekly board, since that is the one that pays out — matching what
+  // "Season 01 standings" below actually links to.
+  const [weeklyRank, setWeeklyRank] = useState<number | null | undefined>(undefined);
+  useEffect(() => {
+    if (!nimiq.address) {
+      setWeeklyRank(undefined);
+      return;
+    }
+    let cancelled = false;
+    fetchMyRank('weekly', nimiq.address)
+      .then((rank) => {
+        if (!cancelled) setWeeklyRank(rank);
+      })
+      .catch(() => {
+        if (!cancelled) setWeeklyRank(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [nimiq.address]);
 
   return (
     <div className="pt-1">
@@ -95,7 +116,11 @@ export default function HomePage() {
           <Figure icon={<TrophyIcon className="size-3.5" />} label="Wins" value={record ? String(record.won) : '—'} />
           <Figure icon={<FlameIcon className="size-3.5" />} label="Streak" value={String(progress.streak)} />
           <Figure icon={<StarIcon className="size-3.5" />} label="Earned" value={earned === null ? '—' : formatNim(earned, { maximumFractionDigits: 2 })} />
-          <Figure icon={<CrownIcon className="size-3.5" />} label="Rank" value="—" />
+          <Figure
+            icon={<CrownIcon className="size-3.5" />}
+            label="Rank"
+            value={weeklyRank === undefined ? '—' : weeklyRank === null ? 'Unranked' : `#${weeklyRank}`}
+          />
         </div>
       </section>
       <div className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1">
@@ -109,7 +134,8 @@ export default function HomePage() {
         </Link>
       </div>
       <p className="mt-1 text-[0.6875rem] leading-snug text-faint">
-        Streak, earnings and wins are yours and live. Rank stays empty until ranking ships.
+        Streak, earnings, wins and rank are yours and live. Rank is this week&apos;s standing —
+        top 3 get paid automatically when the week ends.
       </p>
 
       <Section title="Arcade" href="/arcade" action="See all games">

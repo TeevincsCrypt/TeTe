@@ -65,6 +65,10 @@ function describe(entry: ActivityEntry): { title: string; body: string } | null 
       return { title: `${entry.label} tipped you ${amount}`, body: 'It is in your balance now.' };
     case 'payout':
       return { title: `You won ${amount}`, body: entry.label };
+    case 'prize':
+      // The one server-initiated entry besides a tip — a weekly leaderboard
+      // payout the player did nothing on this device to trigger.
+      return { title: `Leaderboard prize: ${amount}`, body: entry.label };
     default:
       // Rewards, check-ins, withdrawals and tips sent are all things the
       // player did themselves, on this device, and already saw happen.

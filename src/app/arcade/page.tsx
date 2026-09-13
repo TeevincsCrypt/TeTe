@@ -18,6 +18,7 @@ import { ApiError, claimGameReward, fetchStatus } from '@/lib/api/client';
 import { cn } from '@/components/ui/cn';
 import { PhaseNote } from '@/components/ui/PhaseNote';
 import { GAMES, gameById, type GameId } from '@/lib/arcade/games';
+import { startMusic, stopMusic } from '@/lib/arcade/music';
 import { formatNim } from '@/lib/nimiq/units';
 import { useCharacter } from '@/state/use-character';
 import { useMiniApp } from '@/state/mini-app-provider';
@@ -44,6 +45,15 @@ export default function ArcadePage() {
     | { score: number; coins: number; hazards: number; luna: number; record: boolean; at: number }
     | null
   >(null);
+
+  // One music loop for the whole arcade, keyed on whichever game is open —
+  // simpler and more reliable than starting and stopping it from inside each
+  // of the eight game components individually.
+  useEffect(() => {
+    if (!active) return;
+    startMusic();
+    return () => stopMusic();
+  }, [active]);
 
   const [rewardsReady, setRewardsReady] = useState(false);
   useEffect(() => {

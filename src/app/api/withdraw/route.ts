@@ -5,7 +5,7 @@ import { verifySignedRequest } from '@/lib/server/auth';
 import { hasDurableStore, hasTreasury } from '@/lib/server/env';
 import { rewardsBalanceKey } from '@/lib/server/rewards';
 import { get, set } from '@/lib/server/store';
-import { payout } from '@/lib/server/treasury';
+import { payout, TreasuryError } from '@/lib/server/treasury';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -68,6 +68,20 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ sent: owed, transaction: hash });
   } catch (cause: unknown) {
+    // A hash here means the treasury did broadcast this — only the
+    // confirmation check timed out. Restoring the balance and inviting a
+    // retry would risk a second real send once the first lands anyway, so
+    // this is recorded as sent, exactly like the success path above.
+    if (cause instanceof TreasuryError && cause.hash) {
+      await recordActivity(auth.address, {
+        kind: 'withdrawal',
+        luna: -owed,
+        label: 'Withdrawn to your wallet',
+        href: '/wallet?tab=withdraw',
+      });
+      return NextResponse.json({ sent: owed, transaction: cause.hash });
+    }
+
     await set(balanceKey(auth.address), owed);
     return NextResponse.json(
       { error: cause instanceof Error ? cause.message : 'The payout failed.' },
