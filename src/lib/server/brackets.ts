@@ -204,7 +204,9 @@ export async function joinBracket(id: string, address: string, username?: string
 export async function kickFromBracket(id: string, hostAddress: string, target: string): Promise<Outcome<Bracket>> {
   const bracket = await readBracket(id);
   if (!bracket) return fail('No such tournament.', 404);
-  if (compactAddress(bracket.hostAddress) !== compactAddress(hostAddress)) {
+  // A tournament created before hostAddress existed on the record has none —
+  // treat that as "no known host" rather than crashing on it.
+  if (!bracket.hostAddress || compactAddress(bracket.hostAddress) !== compactAddress(hostAddress)) {
     return fail('Only the player who started this tournament can remove someone.', 403);
   }
   if (bracket.state !== 'open') {
@@ -241,7 +243,9 @@ export async function kickFromBracket(id: string, hostAddress: string, target: s
 export async function cancelBracket(id: string, address: string): Promise<Outcome<Bracket>> {
   const bracket = await readBracket(id);
   if (!bracket) return fail('No such tournament.', 404);
-  if (compactAddress(bracket.hostAddress) !== compactAddress(address)) {
+  // A tournament created before hostAddress existed on the record has none —
+  // treat that as "no known host" rather than crashing on it.
+  if (!bracket.hostAddress || compactAddress(bracket.hostAddress) !== compactAddress(address)) {
     return fail('Only the player who started this tournament can call it off.', 403);
   }
   if (bracket.state === 'complete') return fail('This tournament is already complete.', 409);

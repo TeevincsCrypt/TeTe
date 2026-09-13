@@ -437,14 +437,22 @@ function txTimeMs(tx: RpcTransaction): number | null {
 async function waitForOnChain(hash: string, address: string): Promise<void> {
   const attempts = 14;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    // A busy treasury address can rack up other transactions between one
-    // send and the next; reading only the most recent 20 meant a genuinely
-    // successful payout could scroll out of view before this ever saw it,
-    // which is the likely reason this ever reported "unconfirmed" for a
-    // transaction that was actually fine. 100 gives real headroom.
-    const transactions = await transactionsFor(address, 100);
-    const found = transactions.find((tx) => tx.hash === hash);
-    if (found && (found.confirmations ?? 0) >= 1) return;
+    try {
+      // A busy treasury address can rack up other transactions between one
+      // send and the next; reading only the most recent 20 meant a genuinely
+      // successful payout could scroll out of view before this ever saw it,
+      // which is the likely reason this ever reported "unconfirmed" for a
+      // transaction that was actually fine. 100 gives real headroom.
+      const transactions = await transactionsFor(address, 100);
+      const found = transactions.find((tx) => tx.hash === hash);
+      if (found && (found.confirmations ?? 0) >= 1) return;
+    } catch {
+      // A node hiccup while polling is not the same as the send failing —
+      // the transaction was already broadcast before this loop started. Losing
+      // the hash here by letting this propagate would make a caller treat a
+      // real send as if nothing happened, which is worse than just trying
+      // again on the next tick.
+    }
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
   // The node accepted this and gave back a hash — it did not silently vanish,

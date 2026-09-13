@@ -75,7 +75,9 @@ export default function BracketDetailPage() {
 
   const address = nimiq.address ? compactAddress(nimiq.address) : null;
   const iAmIn = address ? bracket.entrants.some((e) => compactAddress(e.address) === address) : false;
-  const isHost = address !== null && compactAddress(bracket.hostAddress) === address;
+  // A tournament created before hostAddress existed on the record has none —
+  // treat that as "no known host" rather than crashing on it.
+  const isHost = Boolean(address && bracket.hostAddress && compactAddress(bracket.hostAddress) === address);
   const format = formatById(bracket.format);
   const title = bracket.title?.trim() || `${format.name} tournament`;
   const champion = bracket.championSlot !== undefined ? bracket.entrants[bracket.championSlot] : undefined;

@@ -286,7 +286,10 @@ export function signConfirmFunding(address: string, challengeId: string) {
 
 export async function withdrawRewards(address: string) {
   const auth = await signIntent(address, 'withdraw');
-  return post<{ sent: number; transaction: string }>('/api/withdraw', auth);
+  // `pending` is set when the treasury broadcast this but the server gave up
+  // waiting to see it confirm — the send is real, just not yet verified on
+  // chain. Not an error: retrying would risk sending it twice.
+  return post<{ sent: number; transaction: string; pending?: boolean }>('/api/withdraw', auth);
 }
 
 /** Start a tournament, entering yourself as its first player. */
