@@ -71,15 +71,18 @@ export async function POST(request: Request) {
     // A hash here means the treasury did broadcast this — only the
     // confirmation check timed out. Restoring the balance and inviting a
     // retry would risk a second real send once the first lands anyway, so
-    // this is recorded as sent, exactly like the success path above.
+    // the balance stays spent — but this is reported as pending, not a
+    // confirmed success, since we genuinely do not know yet whether it will
+    // land. Overclaiming "sent" here is exactly what left a player unsure
+    // whether their money was real or gone.
     if (cause instanceof TreasuryError && cause.hash) {
       await recordActivity(auth.address, {
         kind: 'withdrawal',
         luna: -owed,
-        label: 'Withdrawn to your wallet',
+        label: 'Withdrawal broadcast — awaiting confirmation',
         href: '/wallet?tab=withdraw',
       });
-      return NextResponse.json({ sent: owed, transaction: cause.hash });
+      return NextResponse.json({ sent: owed, transaction: cause.hash, pending: true });
     }
 
     await set(balanceKey(auth.address), owed);

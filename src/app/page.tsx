@@ -124,19 +124,27 @@ export default function HomePage() {
         </div>
       </section>
       <div className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1">
-        <Link href="/leaderboard" className="flex items-center gap-1.5 py-1 text-[0.75rem] font-bold text-accent-text active:opacity-60">
-          Season 01 standings
-          <ChevronRightIcon className="size-3.5" />
-        </Link>
         <Link href="/wallet" className="flex items-center gap-1.5 py-1 text-[0.75rem] font-bold text-accent-text active:opacity-60">
           Wallet and earnings
           <ChevronRightIcon className="size-3.5" />
         </Link>
       </div>
-      <p className="mt-1 text-[0.6875rem] leading-snug text-faint">
-        Streak, earnings, wins and rank are yours and live. Rank is this week&apos;s standing —
-        top 3 get paid automatically when the week ends.
-      </p>
+
+      <Link
+        href="/leaderboard"
+        className="mt-4 flex items-center gap-3.5 rounded-2xl bg-contrast p-4 transition-transform duration-100 active:scale-[0.98]"
+      >
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-gold/20 text-gold">
+          <CrownIcon className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[0.9375rem] font-black tracking-tight text-on-contrast">Season 01 leaderboard</p>
+          <p className="mt-0.5 truncate text-[0.75rem] text-on-contrast/60">
+            Weekly top 3 win 100/50/30 NIM, automatically.
+          </p>
+        </div>
+        <ChevronRightIcon className="size-4 shrink-0 text-on-contrast/50" />
+      </Link>
 
       <Section title="Arcade" href="/arcade" action="See all games">
         <ul className="divide-y divide-line">
