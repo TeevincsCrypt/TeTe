@@ -5,14 +5,10 @@ import { verifySignedRequest } from '@/lib/server/auth';
 import { hasDurableStore, hasTreasury } from '@/lib/server/env';
 import { rewardsBalanceKey } from '@/lib/server/rewards';
 import { get, set } from '@/lib/server/store';
-import { payout, TreasuryError } from '@/lib/server/treasury';
+import { payout } from '@/lib/server/treasury';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-// payout() now waits for on-chain confirmation before resolving — comfortably
-// under Vercel's default, but explicit so a platform-level timeout can never
-// cut it off mid-poll and leave the ledger and the chain disagreeing again.
-export const maxDuration = 30;
 
 /**
  * Pay out arcade rewards.
@@ -27,7 +23,7 @@ export const maxDuration = 30;
  * re-derived so the two can never disagree about whose balance is whose.
  */
 const balanceKey = rewardsBalanceKey;
-const MIN_LUNA = 25 * 100_000;
+const MIN_LUNA = 10 * 100_000;
 
 export async function POST(request: Request) {
   if (!hasDurableStore || !hasTreasury) {
@@ -68,23 +64,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ sent: owed, transaction: hash });
   } catch (cause: unknown) {
-    // A hash here means the treasury did broadcast this — only the
-    // confirmation check timed out. Restoring the balance and inviting a
-    // retry would risk a second real send once the first lands anyway, so
-    // the balance stays spent — but this is reported as pending, not a
-    // confirmed success, since we genuinely do not know yet whether it will
-    // land. Overclaiming "sent" here is exactly what left a player unsure
-    // whether their money was real or gone.
-    if (cause instanceof TreasuryError && cause.hash) {
-      await recordActivity(auth.address, {
-        kind: 'withdrawal',
-        luna: -owed,
-        label: 'Withdrawal broadcast — awaiting confirmation',
-        href: '/wallet?tab=withdraw',
-      });
-      return NextResponse.json({ sent: owed, transaction: cause.hash, pending: true });
-    }
-
     await set(balanceKey(auth.address), owed);
     return NextResponse.json(
       { error: cause instanceof Error ? cause.message : 'The payout failed.' },

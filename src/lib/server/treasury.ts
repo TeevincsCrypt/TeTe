@@ -34,20 +34,7 @@ import { rpc, transactionsFor, type RpcTransaction } from './rpc';
  */
 const MIN_CONFIRMATIONS = 1;
 
-export class TreasuryError extends Error {
-  /**
-   * Set only when a transaction was actually broadcast and accepted by the
-   * node before this failed — i.e. this failure means "could not confirm it
-   * in time," not "nothing happened." A caller that sees a hash here should
-   * treat the send as done rather than retrying it, which would risk paying
-   * out the same money twice once the slow-to-index original lands anyway.
-   */
-  readonly hash?: string;
-  constructor(message: string, hash?: string) {
-    super(message);
-    this.hash = hash;
-  }
-}
+export class TreasuryError extends Error {}
 
 function assertReady(): void {
   if (!hasTreasury) {
@@ -424,51 +411,18 @@ function txTimeMs(tx: RpcTransaction): number | null {
 }
 
 /**
- * Wait for a sent transaction to actually land, rather than trusting the hash
- * the send returned.
+ * Send from the treasury. Resolves as soon as the node accepts the
+ * transaction and hands back a hash — the same "broadcast and trust it"
+ * shape as any other wallet send, so a withdrawal lands as directly as it
+ * looks to the player: click withdraw, it's sent.
  *
- * A hash back from `sendBasicTransactionWithData` proves the node accepted the
- * transaction syntactically — not that it was ever included in a block. A
- * transaction with an expired validity window is accepted the same way and
- * then silently dropped, which is exactly what happened here before the fix
- * above: the caller saw a hash and reported success while no NIM ever moved.
- * So a payout is not treated as real until it is found on chain.
- */
-async function waitForOnChain(hash: string, address: string): Promise<void> {
-  const attempts = 14;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      // A busy treasury address can rack up other transactions between one
-      // send and the next; reading only the most recent 20 meant a genuinely
-      // successful payout could scroll out of view before this ever saw it,
-      // which is the likely reason this ever reported "unconfirmed" for a
-      // transaction that was actually fine. 100 gives real headroom.
-      const transactions = await transactionsFor(address, 100);
-      const found = transactions.find((tx) => tx.hash === hash);
-      if (found && (found.confirmations ?? 0) >= 1) return;
-    } catch {
-      // A node hiccup while polling is not the same as the send failing —
-      // the transaction was already broadcast before this loop started. Losing
-      // the hash here by letting this propagate would make a caller treat a
-      // real send as if nothing happened, which is worse than just trying
-      // again on the next tick.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-  }
-  // The node accepted this and gave back a hash — it did not silently vanish,
-  // this call simply ran out of patience waiting to see it confirmed. Callers
-  // get that hash so they can treat the send as done rather than retrying it,
-  // which would risk paying this out a second time once the original lands.
-  throw new TreasuryError(
-    'The payout was submitted but could not be confirmed on chain within this request.',
-    hash,
-  );
-}
-
-/**
- * Send from the treasury. Resolves only once the transaction is confirmed on
- * chain — not merely accepted by the node — so a caller can trust that
- * resolving means the NIM actually moved.
+ * This does not wait to see the transaction confirmed on chain. That was
+ * tried, to chase down a report of a payout that never arrived — but the
+ * real cause was the validity window below, and waiting on top of that fix
+ * only added a slow, flaky "still confirming" state to a send that was
+ * already fine. The actual failure mode it was guarding against (a
+ * transaction accepted into the mempool and then silently dropped) is what
+ * the '+0' validity window fixes at the source.
  *
  * The wallet is unlocked for a few seconds only — long enough for this send,
  * short enough that an idle node is not left able to spend.
@@ -484,7 +438,7 @@ export async function payout(recipient: string, luna: number, memo: string): Pro
   }
 
   await rpc('unlockAccount', [TREASURY_ADDRESS, TREASURY_PASSPHRASE, 10]);
-  const hash = await rpc<string>('sendBasicTransactionWithData', [
+  return rpc<string>('sendBasicTransactionWithData', [
     TREASURY_ADDRESS,
     recipient,
     Buffer.from(memo, 'utf8').toString('hex'),
@@ -499,6 +453,4 @@ export async function payout(recipient: string, luna: number, memo: string): Pro
     // value that is ever correct for a payout sent in real time.
     '+0',
   ]);
-  await waitForOnChain(hash, TREASURY_ADDRESS as string);
-  return hash;
 }

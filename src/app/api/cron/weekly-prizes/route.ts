@@ -5,8 +5,6 @@ import { payWeeklyPrizes } from '@/lib/server/leaderboard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-// Up to three real payouts, each of which can itself wait out a slow
-// confirmation — see waitForOnChain in lib/server/treasury.ts.
 export const maxDuration = 60;
 
 /**
