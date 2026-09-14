@@ -107,8 +107,11 @@ export interface PitchScene {
 export function createPitchScene(canvas: HTMLCanvasElement): PitchScene {
   const stage = createStage(canvas, {
     sky: '#101a24',
+    gradient: ['#0c151f', '#24384a', '#1d3324'],
     fog: [40, 90],
     fov: 52,
+    shadows: true,
+    shadowSpan: 16,
     camera: [0, 13, 20],
     lookAt: [0, 0, -6],
     ambient: 0.75,

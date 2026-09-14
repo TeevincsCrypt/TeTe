@@ -163,7 +163,10 @@ export interface RushScene {
 export function createRushScene(canvas: HTMLCanvasElement, look: Look): RushScene {
   const stage = createStage(canvas, {
     sky: '#1d2433',
+    gradient: ['#161c29', '#2b3448', '#161b26'],
     fog: [26, 72],
+    shadows: true,
+    shadowSpan: 12,
     // Set back and high enough to read two or three obstacles ahead, which is
     // the distance the game actually asks a player to plan over.
     camera: [0, 4.1, 8.2],
