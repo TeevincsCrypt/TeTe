@@ -94,6 +94,23 @@ export function roundComplete(bracket: Bracket, round: number): boolean {
   return matches.length > 0 && matches.every((match) => match.winnerSlot !== undefined);
 }
 
+/**
+ * Who started this tournament, and so who may call it off or remove a player.
+ *
+ * `hostAddress` was added to the record after tournaments already existed, so
+ * the ones created before it have none. Treating those as hostless locked
+ * their own creators out of cancelling them permanently — which is worse than
+ * the crash the guard was written to prevent.
+ *
+ * `entrants[0]` is the answer for those: createBracket seeds the entrant list
+ * with the host and everyone else is pushed on after, so the first entrant is
+ * the creator by construction. Client and server both read this, because a
+ * button the UI offers and the API then refuses is its own kind of broken.
+ */
+export function bracketHost(bracket: Bracket): string | undefined {
+  return bracket.hostAddress ?? bracket.entrants[0]?.address;
+}
+
 export const BRACKET_STATE_LABEL: Record<BracketState, string> = {
   open: 'Filling up',
   live: 'In progress',

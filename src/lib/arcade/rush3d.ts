@@ -14,14 +14,18 @@
 import * as THREE from 'three';
 
 import {
+  buildBush,
   buildCharacter,
-  buildSkyline,
+  buildPalm,
+  buildTree,
   createStage,
   disposeStage,
   ground,
   hideRest,
+  noiseTexture,
   poseRun,
   pool,
+  recycleAlong,
   type Character,
   type Stage,
 } from './three-kit';
@@ -51,22 +55,39 @@ export interface RushFrameState {
   over: boolean;
 }
 
+/**
+ * Ballast with a concrete sleeper laid across it, one per metre.
+ *
+ * Grain and blotching on top of the stone, because a railway bed seen at a
+ * glancing angle is exactly where a flat colour gives itself away — and this
+ * surface fills the lower half of the screen the whole time.
+ */
 function sleeperTexture(): THREE.CanvasTexture {
+  const size = 128;
   const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
+  canvas.width = size;
+  canvas.height = size;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#2b3242';
-  ctx.fillRect(0, 0, 64, 64);
-  // One sleeper per tile; the tile repeats once per metre of track.
-  ctx.fillStyle = '#212736';
-  ctx.fillRect(0, 44, 64, 14);
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  ctx.fillRect(0, 58, 64, 3);
+
+  ctx.fillStyle = '#4f4a44';
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 2600; i += 1) {
+    const shade = Math.round((Math.random() - 0.5) * 60);
+    const tone = shade > 0 ? 255 : 0;
+    ctx.fillStyle = `rgba(${tone},${tone},${tone},${Math.abs(shade) / 200})`;
+    ctx.fillRect(Math.random() * size, Math.random() * size, 2.2, 2.2);
+  }
+
+  ctx.fillStyle = '#6b625a';
+  ctx.fillRect(0, 88, size, 26);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(0, 112, size, 6);
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(1, FAR);
+  texture.repeat.set(2, FAR);
+  texture.anisotropy = 8;
   return texture;
 }
 
@@ -125,24 +146,37 @@ function buildRail(): THREE.Group {
   return group;
 }
 
+/** A catenary mast with its gantry arm — what says "railway" at a glance. */
 function buildLamp(): THREE.Group {
   const group = new THREE.Group();
-  const postMat = new THREE.MeshStandardMaterial({ color: '#39414f', roughness: 0.7 });
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 4.4, 6), postMat);
-  post.position.y = 2.2;
+  const steel = new THREE.MeshStandardMaterial({
+    color: '#7d8896', roughness: 0.45, metalness: 0.65,
+  });
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 6.4, 8), steel);
+  post.position.y = 3.2;
+  post.castShadow = true;
   group.add(post);
-  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.09, 0.09), postMat);
-  arm.position.set(0, 4.3, 0);
+
+  // The arm reaches back over the track; the sign of its offset is set by the
+  // side the mast stands on, so it always points inward.
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.12, 0.12), steel);
+  arm.position.set(0, 6.2, 0);
+  arm.castShadow = true;
   group.add(arm);
-  // Emissive only — a real light per lamp would be dozens of lights in frame.
-  const bulb = new THREE.Mesh(
-    new THREE.BoxGeometry(0.34, 0.12, 0.24),
+
+  const brace = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.09, 0.09), steel);
+  brace.position.set(0, 5.5, 0);
+  brace.rotation.z = 0.42;
+  group.add(brace);
+
+  const lamp = new THREE.Mesh(
+    new THREE.BoxGeometry(0.3, 0.12, 0.22),
     new THREE.MeshStandardMaterial({
-      color: '#ffd678', emissive: '#ffd678', emissiveIntensity: 1.6,
+      color: '#ffe9b0', emissive: '#ffd678', emissiveIntensity: 0.9,
     }),
   );
-  bulb.position.set(0, 4.2, 0);
-  group.add(bulb);
+  lamp.position.set(0, 6.05, 0);
+  group.add(lamp);
   return group;
 }
 
@@ -157,23 +191,30 @@ export interface RushScene {
   coins: THREE.Mesh[];
   hazards: THREE.Mesh[];
   lamps: THREE.Group[];
+  palms: THREE.Group[];
+  trees: THREE.Group[];
+  bushes: THREE.Mesh[];
   cameraX: number;
 }
 
 export function createRushScene(canvas: HTMLCanvasElement, look: Look): RushScene {
   const stage = createStage(canvas, {
-    sky: '#1d2433',
-    gradient: ['#161c29', '#2b3448', '#161b26'],
-    fog: [26, 72],
+    // Daylight rather than the near-black it ran in before. The corridor was
+    // unreadable past the first obstacle, and every metal surface in it — the
+    // rails, the masts, the barriers — needs a lit sky to be worth having.
+    sky: '#c4d9e6',
+    gradient: ['#7fb6dd', '#d6e6ef', '#6f7d62'],
+    fog: [44, 128],
     shadows: true,
-    shadowSpan: 12,
+    shadowSpan: 14,
     // Set back and high enough to read two or three obstacles ahead, which is
     // the distance the game actually asks a player to plan over.
     camera: [0, 4.1, 8.2],
-    lookAt: [0, 1.0, -14],
-    ambient: 0.55,
-    sunIntensity: 0.85,
-    sun: [-4, 12, 6],
+    lookAt: [0, 1.0, -16],
+    ambient: 0.95,
+    sunIntensity: 1.45,
+    sun: [12, 22, 8],
+    exposure: 1.08,
   });
 
   // Track bed, laid far enough forward that its far edge is inside the fog.
@@ -186,9 +227,32 @@ export function createRushScene(canvas: HTMLCanvasElement, look: Look): RushScen
   track.position.set(0, 0, -FAR * DEPTH * 0.5 + 4);
   stage.scene.add(track);
 
-  // Gravel either side, so the corridor has edges without needing walls.
-  ground(stage.scene, '#202736', [14, FAR * DEPTH], [-(LANE_W * 3) / 2 - 6.5, -0.02, -FAR * 0.5]);
-  ground(stage.scene, '#202736', [14, FAR * DEPTH], [(LANE_W * 3) / 2 + 6.5, -0.02, -FAR * 0.5]);
+  // Two steel rails per side of every lane boundary would be a model railway;
+  // one pair down the outside of the corridor is what reads as track at speed.
+  const railMat = new THREE.MeshStandardMaterial({
+    color: '#b8c0ca', roughness: 0.28, metalness: 0.9,
+  });
+  for (const x of [-LANE_W * 1.5 + 0.28, LANE_W * 1.5 - 0.28]) {
+    const rail = new THREE.Mesh(
+      new THREE.BoxGeometry(0.13, 0.16, FAR * DEPTH),
+      railMat,
+    );
+    rail.position.set(x, 0.1, -FAR * DEPTH * 0.5 + 4);
+    rail.castShadow = true;
+    stage.scene.add(rail);
+  }
+
+  // Grass embankments either side, wide enough to plant on.
+  const verge = noiseTexture('#5d8b46', { repeat: [12, 80], grain: 2600, contrast: 30, patches: 12 });
+  for (const side of [-1, 1]) {
+    ground(
+      stage.scene,
+      '#5d8b46',
+      [40, FAR * DEPTH * 1.4],
+      [side * (LANE_W * 1.5 + 21), -0.05, -FAR * 0.5],
+      { map: verge },
+    );
+  }
 
   const lineMat = new THREE.MeshStandardMaterial({
     color: '#c8ff4d',
@@ -204,7 +268,20 @@ export function createRushScene(canvas: HTMLCanvasElement, look: Look): RushScen
     stage.scene.add(line);
   }
 
-  buildSkyline(stage.scene, 16, -78, '#141a26');
+  // Distant city, set inside the fog so it reads as structures in haze.
+  const cityMat = new THREE.MeshStandardMaterial({ color: '#a7b6c2', roughness: 1 });
+  const city = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), cityMat, 26);
+  const m = new THREE.Matrix4();
+  for (let i = 0; i < 26; i += 1) {
+    const h = 10 + Math.random() * 38;
+    const w = 6 + Math.random() * 9;
+    const side = i % 2 === 0 ? -1 : 1;
+    m.makeScale(w, h, w);
+    m.setPosition(side * (24 + Math.random() * 70), h / 2, -96 - Math.random() * 40);
+    city.setMatrixAt(i, m);
+  }
+  city.instanceMatrix.needsUpdate = true;
+  stage.scene.add(city);
 
   const trains = pool(stage.scene, 6, () => buildTrain());
   const barriers = pool(stage.scene, 8, () => buildBarrier());
@@ -227,11 +304,14 @@ export function createRushScene(canvas: HTMLCanvasElement, look: Look): RushScen
   const hazards = pool(stage.scene, 8, () => new THREE.Mesh(hazardGeo, hazardMat));
 
   const lamps = pool(stage.scene, 10, () => buildLamp());
+  const palms = pool(stage.scene, 12, () => buildPalm(1));
+  const trees = pool(stage.scene, 14, () => buildTree(1));
+  const bushes = pool(stage.scene, 18, () => buildBush(1));
 
   const runner = buildCharacter(look);
   stage.scene.add(runner.group);
 
-  return { stage, runner, track, sleepers, trains, barriers, rails, coins, hazards, lamps, cameraX: 0 };
+  return { stage, runner, track, sleepers, trains, barriers, rails, coins, hazards, lamps, palms, trees, bushes, cameraX: 0 };
 }
 
 export function updateRushScene(scene: RushScene, s: RushFrameState) {
@@ -313,19 +393,40 @@ export function updateRushScene(scene: RushScene, s: RushFrameState) {
   runner.group.rotation.z = (s.laneShift - (runner.group.position.x / LANE_W)) * 0.2;
   runner.group.rotation.y = s.over ? 0.6 : 0;
 
-  // Lamp posts, recycled by distance so the corridor keeps passing something.
-  const spacing = 9;
-  for (let i = 0; i < scene.lamps.length; i += 1) {
-    const lamp = scene.lamps[i];
-    if (!lamp) continue;
-    const span = scene.lamps.length * spacing * 0.5;
+  // Lineside scenery, recycled by distance travelled so a handful of objects
+  // reads as a continuous corridor running to the horizon.
+  const EDGE = LANE_W * 1.5;
+
+  recycleAlong(scene.lamps, 11, s.distance, (lamp, i, z) => {
     const side = i % 2 === 0 ? -1 : 1;
-    const along = (i * spacing * 0.5 - s.distance) % span;
-    lamp.visible = true;
-    lamp.position.set(side * (LANE_W * 1.5 + 1.4), 0, -(((along % span) + span) % span));
-  }
+    lamp.position.set(side * (EDGE + 1.6), 0, z);
+    // The arm reaches inward over the track; offsetting it is enough, and
+    // rotating the mast as well would transform it twice.
+    lamp.children[1]?.position.set(-side * 1.5, 6.2, 0);
+    lamp.children[2]?.position.set(-side * 0.7, 5.5, 0);
+    lamp.children[3]?.position.set(-side * 2.6, 6.05, 0);
+  });
+
+  recycleAlong(scene.trees, 9, s.distance + 3, (tree, i, z) => {
+    const side = i % 2 === 0 ? -1 : 1;
+    tree.position.set(side * (EDGE + 6 + (i % 3) * 2.4), 0, z);
+  });
+
+  recycleAlong(scene.palms, 13, s.distance + 7, (palm, i, z) => {
+    const side = i % 2 === 0 ? -1 : 1;
+    palm.position.set(side * (EDGE + 9 + (i % 2) * 3.5), 0, z);
+  });
+
+  recycleAlong(scene.bushes, 6, s.distance, (bush, i, z) => {
+    const side = i % 2 === 0 ? -1 : 1;
+    bush.position.set(side * (EDGE + 2.4 + (i % 4) * 0.7), 0.2, z);
+  });
 
   scene.cameraX += (x * 0.45 - scene.cameraX) * 0.15;
+  scene.stage.sun.position.set(x + 12, 22, 8);
+  scene.stage.sun.target.position.set(x, 0, -6);
+  scene.stage.sun.target.updateMatrixWorld();
+
   scene.stage.camera.position.set(scene.cameraX, 4.1 + s.air * 0.22, 8.2);
   scene.stage.camera.lookAt(scene.cameraX * 0.7, 1.0 + s.air * 0.3, -14);
 }
