@@ -4,7 +4,19 @@ import { useEffect, useRef, type ReactNode } from 'react';
 
 import { type Stage, resizeStage } from '@/lib/arcade/three-kit';
 
-import type { Pointer } from './GameCanvas';
+export interface Pointer {
+  x: number;
+  y: number;
+  /** True while a finger or mouse button is down. */
+  down: boolean;
+  /** Set on the frame a press begins, cleared after that frame is read. */
+  pressed: boolean;
+  /** Set on the frame a press ends. */
+  released: boolean;
+  /** Movement since the previous frame, in CSS pixels. */
+  dx: number;
+  dy: number;
+}
 
 export interface Frame3D<H> {
   /** Whatever `setup` built: the game's own world, stage included. */
@@ -20,15 +32,15 @@ export interface Frame3D<H> {
 }
 
 /**
- * The shared surface for the 3D games: WebGL context, device-pixel-correct
+ * The shared surface for every arcade game: WebGL context, device-pixel-correct
  * sizing, a clamped rAF loop, unified pointer input, and disposal on the way
- * out. The 2D `GameCanvas` equivalent, and deliberately the same `Pointer`
- * shape, so a game's input handling ports across without being rewritten.
+ * out. It replaces the 2D canvas the arcade used to share, and keeps that
+ * surface's `Pointer` shape unchanged, which is why each game's input handling
+ * came across without being rewritten.
  *
- * Like GameCanvas, a running game keeps its state in a ref and mutates it
- * inside `onFrame` — nothing here triggers a React render per frame. HUD text
- * is written straight to DOM nodes for the same reason; see the games' own
- * `hud` blocks.
+ * A running game keeps its state in a ref and mutates it inside `onFrame` —
+ * nothing here triggers a React render per frame. HUD text is written straight
+ * to DOM nodes for the same reason; see the games' own `hud` blocks.
  *
  * `setup` returning null (no WebGL) leaves the overlay and its fallback in
  * place rather than crashing the arcade.

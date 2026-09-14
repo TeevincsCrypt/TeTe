@@ -31,7 +31,7 @@ const STEP = 12;
  * scoring as always — none of that changed. What changed is the renderer:
  * this now drives a real lit, fogged Three.js scene (road, car, palm trees,
  * guardrails, ocean, skyline) instead of flat 2D canvas shapes, built and
- * driven directly here rather than through the shared 2D `GameCanvas`.
+ * driven directly here rather than through a shared 2D canvas.
  *
  * One deliberate simplification carried over from the 3D scene itself: the
  * road shifts sideways in step with the same `centre` the physics already
@@ -232,7 +232,7 @@ export function DriftGame({
       canvas.removeEventListener('pointercancel', onUp);
       disposeDriftScene(scene);
     };
-    // Mount once, exactly like the shared GameCanvas — the loop reads live
+    // Mount once — the loop reads live
     // refs for everything that can change (character colour, callbacks).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
