@@ -57,13 +57,41 @@ const MAX_SCORE: Record<GameId, number> = {
   overheat: 200_000,
   alley: 100_000,
 };
-const MAX_COINS = 1_000;
+/**
+ * A real round collects a handful of coins, not a thousand. The old ceiling
+ * of 1,000 was set as "far past any real run" — but at 0.2 NIM a coin, it
+ * priced a single fabricated report at 200 NIM, which was the entire daily
+ * cap in one request. A sanity ceiling has to be cheap to hit the wrong way,
+ * not just generous to the right way.
+ */
+const MAX_COINS = 50;
+
+/**
+ * Hard ceiling on what any single round can credit, whatever it reports.
+ *
+ * This is the guard that makes the reports being unverified survivable. Score
+ * and coin ceilings bound the inputs, but they multiply into a payout, and the
+ * product was large enough that one crafted request drew a whole day's cap.
+ * Capping the output directly means the worst a fabricated round can do is
+ * earn one ordinary round's worth, so draining anything meaningful takes real
+ * time against the cooldown rather than a single call.
+ */
+const MAX_ROUND_LUNA = 100_000; // 1 NIM
 
 /** The daily check-in. Flat, not scaled by streak — the pool is finite. */
 const CHECK_IN_LUNA = 50_000; // 0.5 NIM
 
-/** Ceiling on total credited to one address per UTC day. */
-const MAX_DAILY_LUNA = 20_000_000; // 200 NIM
+/**
+ * Ceiling on total credited to one address per UTC day.
+ *
+ * Was 200 NIM, which is what the treasury was drained 200 NIM at a time
+ * against — twenty payouts of exactly this figure, sixteen of them inside a
+ * single minute to sixteen freshly-made addresses. Addresses are free, so this
+ * cap is the price of one address per day to a farmer, and it has to be set
+ * low enough that farming is not worth the trouble while a real player can
+ * still clear the withdrawal minimum in a sitting.
+ */
+const MAX_DAILY_LUNA = 2_500_000; // 25 NIM
 
 /** Minimum real time between credited plays from the same address. */
 const COOLDOWN_MS = 15_000;
@@ -122,7 +150,7 @@ export async function creditGameReward(
   // Hazards can take a round below zero; that costs the round, never the
   // balance already earned.
   const earned = Math.max(0, Math.round(score * RATE_LUNA[gameId]) + coins * COIN_LUNA - hazards * HAZARD_LUNA);
-  const credited = Math.min(earned, MAX_DAILY_LUNA - day.luna);
+  const credited = Math.min(earned, MAX_ROUND_LUNA, MAX_DAILY_LUNA - day.luna);
 
   const current = (await get<number>(rewardsBalanceKey(address))) ?? 0;
   const balance = current + credited;
