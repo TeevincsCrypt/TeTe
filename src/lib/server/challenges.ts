@@ -23,7 +23,6 @@ import {
   findFunding,
   payout,
   taggedStakes,
-  TreasuryError,
   treasuryHistory,
   verifyStakeByHash,
 } from './treasury';
@@ -311,17 +310,8 @@ async function payWinner(
     try {
       challenge.payoutTx = await payout(target.address, pot(challenge), `tete:payout:${challenge.id}`);
     } catch (cause: unknown) {
-      // A hash here means the treasury did broadcast this — only the
-      // confirmation check timed out. Leaving the challenge unsettled would
-      // let a retry (re-reporting, or re-resolving the same dispute) call
-      // payout() again for the same money, so this is recorded as sent,
-      // exactly like the success path just above.
-      if (cause instanceof TreasuryError && cause.hash) {
-        challenge.payoutTx = cause.hash;
-      } else {
-        await save(challenge);
-        return fail(cause instanceof Error ? cause.message : 'The payout failed.', 502);
-      }
+      await save(challenge);
+      return fail(cause instanceof Error ? cause.message : 'The payout failed.', 502);
     }
   }
 
@@ -380,20 +370,6 @@ async function refundStakes(challenge: Challenge, label: string): Promise<Outcom
         href: `/challenges/${challenge.id}`,
       });
     } catch (cause: unknown) {
-      // A hash here means this refund was actually broadcast — only the
-      // confirmation check timed out. Leaving it retryable would risk
-      // sending the same refund twice once the slow-to-index original
-      // lands, so it is recorded as sent, same as the line above.
-      if (cause instanceof TreasuryError && cause.hash) {
-        party.refundTx = cause.hash;
-        await recordActivity(party.address, {
-          kind: 'payout',
-          luna: challenge.stake,
-          label: `${label}: ${challenge.title?.trim() || challenge.format}`,
-          href: `/challenges/${challenge.id}`,
-        });
-        continue;
-      }
       await save(challenge);
       return fail(
         cause instanceof Error

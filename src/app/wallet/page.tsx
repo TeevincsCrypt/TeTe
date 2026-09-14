@@ -144,7 +144,7 @@ export default function WalletPage() {
 type SendState =
   | { status: 'idle' }
   | { status: 'sending' }
-  | { status: 'sent'; sent: number; transaction: string; pending?: boolean }
+  | { status: 'sent'; sent: number; transaction: string }
   | { status: 'error'; message: string };
 
 /**
@@ -177,14 +177,8 @@ function WithdrawPanel({
     setSend({ status: 'sending' });
     try {
       const result = await withdrawRewards(address);
-      setSend({ status: 'sent', sent: result.sent, transaction: result.transaction, pending: result.pending });
-      pushNotice(
-        'reward',
-        result.pending ? 'Withdrawal broadcast' : 'Withdrawal sent',
-        result.pending
-          ? `${formatNim(result.sent)} NIM — waiting to confirm on chain.`
-          : `${formatNim(result.sent)} NIM is on its way.`,
-      );
+      setSend({ status: 'sent', sent: result.sent, transaction: result.transaction });
+      pushNotice('reward', 'Withdrawal sent', `${formatNim(result.sent)} NIM is on its way.`);
       onDone();
     } catch (cause: unknown) {
       setSend({
@@ -198,13 +192,9 @@ function WithdrawPanel({
     const link = EXPLORER_TX_URL?.replace('{hash}', send.transaction);
     return (
       <Sticker tone="contrast" className="mt-5 rounded-3xl p-6 text-center">
-        <p className="text-[1.5rem] font-black">
-          {formatNim(send.sent, { locale })} NIM {send.pending ? 'broadcast' : 'sent'}
-        </p>
+        <p className="text-[1.5rem] font-black">{formatNim(send.sent, { locale })} NIM sent</p>
         <p className="mt-2 text-[0.8125rem] leading-relaxed text-on-contrast/70">
-          {send.pending
-            ? "The treasury broadcast this, but we could not confirm it landed before giving up on waiting. It should still arrive — this can take longer than usual. Do not withdraw again until you have checked the reference below; your balance already reflects this as sent."
-            : 'The treasury signed and broadcast it. It lands in your wallet once it confirms.'}
+          The treasury signed and broadcast it. It lands in your wallet once it confirms.
         </p>
         <div className="mt-4 flex items-center justify-center gap-2">
           <p className="min-w-0 truncate font-mono text-[0.6875rem] text-on-contrast/60">

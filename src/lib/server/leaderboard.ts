@@ -4,7 +4,7 @@ import { compactAddress } from '@/lib/nimiq/address';
 
 import { recordActivity } from './activity';
 import { get, set } from './store';
-import { payout, TreasuryError } from './treasury';
+import { payout } from './treasury';
 
 /**
  * Daily and weekly rankings, by real NIM won.
@@ -145,19 +145,7 @@ export async function payWeeklyPrizes(at: number = Date.now()): Promise<WeeklyPr
     const luna = WEEKLY_PRIZES_LUNA[i];
     if (!entry || !luna) continue;
     try {
-      let hash: string;
-      try {
-        hash = await payout(entry.address, luna, `tete:leaderboard:${week}:${i + 1}`);
-      } catch (cause: unknown) {
-        // A hash here means it was actually broadcast — only the
-        // confirmation check timed out. Treat it as sent, same reasoning as
-        // every other payout call site in this app.
-        if (cause instanceof TreasuryError && cause.hash) {
-          hash = cause.hash;
-        } else {
-          throw cause;
-        }
-      }
+      const hash = await payout(entry.address, luna, `tete:leaderboard:${week}:${i + 1}`);
       await recordActivity(entry.address, {
         kind: 'prize',
         luna,

@@ -101,7 +101,7 @@ export function totalLuna(entries: Earning[]): number {
 }
 
 /** Minimum unpaid balance before a payout would be worth its own fee. */
-export const PAYOUT_THRESHOLD_LUNA = 25 * LUNA_PER_NIM;
+export const PAYOUT_THRESHOLD_LUNA = 10 * LUNA_PER_NIM;
 
 function write(entries: Earning[]): void {
   if (typeof window === 'undefined') return;
