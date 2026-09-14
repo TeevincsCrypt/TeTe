@@ -16,6 +16,8 @@
  */
 import * as THREE from 'three';
 
+import type { Look } from './characters';
+
 export interface Stage {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
@@ -154,6 +156,8 @@ export interface Character {
   legL: THREE.Group;
   legR: THREE.Group;
   body: THREE.MeshStandardMaterial;
+  /** Hangs from the shoulders; games can sway it. Absent unless the look has one. */
+  cape?: THREE.Mesh;
 }
 
 /**
@@ -163,29 +167,131 @@ export interface Character {
  * Limbs hang from groups pivoted at the shoulder and hip rather than being
  * positioned outright, so a game can swing them by setting one rotation and
  * get a walk, a run or a flail without rebuilding anything.
+ *
+ * The `Look` decides gear and proportions. Headgear and build do most of the
+ * work: a sealed helmet on a heavy frame and a bare head on a slim one read
+ * as different characters at arcade distance, where a colour swap alone does
+ * not. Every piece is original geometry — no existing game's character or
+ * costume is reproduced.
  */
-export function buildCharacter(color: string, accent = '#f3f4f6'): Character {
+export function buildCharacter(look: Look): Character {
+  const {
+    body: color,
+    accent = '#f3f4f6',
+    helmet = 'none',
+    visor,
+    cape: wantsCape,
+    pack,
+    scarf,
+    hair = 'short',
+    bulk = 1,
+  } = look;
+
   const group = new THREE.Group();
 
   const skin = new THREE.MeshStandardMaterial({ color: '#c98e63', roughness: 0.8 });
   const body = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.05 });
   const trim = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.7 });
 
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.56, 0.26), body);
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46 * bulk, 0.56, 0.26 * bulk), body);
   torso.position.y = 1.02;
   group.add(torso);
 
-  const hips = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.16, 0.25), trim);
+  const hips = new THREE.Mesh(new THREE.BoxGeometry(0.42 * bulk, 0.16, 0.25 * bulk), trim);
   hips.position.y = 0.71;
   group.add(hips);
 
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.29), skin);
+  // A heavy build gets pauldrons, which is what makes it read as armoured
+  // rather than merely wide.
+  if (bulk > 1.1) {
+    for (const side of [-1, 1]) {
+      const pauldron = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.16, 0.3 * bulk), trim);
+      pauldron.position.set(side * (0.23 * bulk + 0.06), 1.26, 0);
+      group.add(pauldron);
+    }
+  }
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.29), helmet === 'full' ? body : skin);
   head.position.y = 1.47;
   group.add(head);
 
-  const hair = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, 0.31), trim);
-  hair.position.y = 1.62;
-  group.add(hair);
+  if (hair === 'short') {
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, 0.31), trim);
+    top.position.y = 1.62;
+    group.add(top);
+  } else if (hair === 'ponytail') {
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, 0.31), trim);
+    top.position.y = 1.62;
+    group.add(top);
+    // Behind the head: the model faces -Z, so +Z is its back.
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.36, 0.12), trim);
+    tail.position.set(0, 1.46, 0.19);
+    tail.rotation.x = -0.35;
+    group.add(tail);
+  }
+
+  if (helmet === 'cap') {
+    const crown = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.12, 0.32), body);
+    crown.position.y = 1.66;
+    group.add(crown);
+    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.04, 0.16), trim);
+    brim.position.set(0, 1.6, -0.22);
+    group.add(brim);
+  } else if (helmet === 'full') {
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.34, 0.35), body);
+    shell.position.y = 1.5;
+    group.add(shell);
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.12), trim);
+    jaw.position.set(0, 1.38, -0.2);
+    group.add(jaw);
+  } else if (helmet === 'crest') {
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.33), body);
+    shell.position.y = 1.5;
+    group.add(shell);
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.22, 0.34), trim);
+    fin.position.y = 1.76;
+    group.add(fin);
+  }
+
+  if (visor) {
+    const band = new THREE.Mesh(
+      new THREE.BoxGeometry(helmet === 'full' ? 0.3 : 0.32, 0.09, 0.06),
+      new THREE.MeshStandardMaterial({
+        color: visor, emissive: visor, emissiveIntensity: 1.2, roughness: 0.2,
+      }),
+    );
+    band.position.set(0, helmet === 'full' ? 1.52 : 1.5, helmet === 'full' ? -0.19 : -0.16);
+    group.add(band);
+  }
+
+  let cape: THREE.Mesh | undefined;
+  if (wantsCape) {
+    cape = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5 * bulk, 0.86, 0.05),
+      new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide }),
+    );
+    // Pivoted at the shoulders so a game can sway it from the top.
+    cape.geometry.translate(0, -0.43, 0);
+    cape.position.set(0, 1.3, 0.17 * bulk);
+    cape.rotation.x = -0.12;
+    group.add(cape);
+  }
+
+  if (pack) {
+    const bag = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.4, 0.18), trim);
+    bag.position.set(0, 1.06, 0.2 * bulk);
+    group.add(bag);
+  }
+
+  if (scarf) {
+    const collar = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.3), trim);
+    collar.position.y = 1.3;
+    group.add(collar);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.06), trim);
+    tail.position.set(0.04, 1.14, 0.24);
+    tail.rotation.x = -0.5;
+    group.add(tail);
+  }
 
   const limb = (material: THREE.Material, w: number, h: number, at: [number, number, number]) => {
     const pivot = new THREE.Group();
@@ -198,12 +304,15 @@ export function buildCharacter(color: string, accent = '#f3f4f6'): Character {
     return pivot;
   };
 
-  const armL = limb(body, 0.15, 0.5, [-0.31, 1.24, 0]);
-  const armR = limb(body, 0.15, 0.5, [0.31, 1.24, 0]);
-  const legL = limb(trim, 0.17, 0.64, [-0.12, 0.68, 0]);
-  const legR = limb(trim, 0.17, 0.64, [0.12, 0.68, 0]);
+  const arm = 0.15 * bulk;
+  const leg = 0.17 * bulk;
+  const shoulder = 0.23 * bulk + 0.08;
+  const armL = limb(body, arm, 0.5, [-shoulder, 1.24, 0]);
+  const armR = limb(body, arm, 0.5, [shoulder, 1.24, 0]);
+  const legL = limb(trim, leg, 0.64, [-0.12, 0.68, 0]);
+  const legR = limb(trim, leg, 0.64, [0.12, 0.68, 0]);
 
-  return { group, head, torso, armL, armR, legL, legR, body };
+  return { group, head, torso, armL, armR, legL, legR, body, cape };
 }
 
 /**

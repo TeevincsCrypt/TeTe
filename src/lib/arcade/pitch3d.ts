@@ -153,13 +153,13 @@ export function createPitchScene(canvas: HTMLCanvasElement): PitchScene {
   );
   stage.scene.add(ball);
 
-  const keeper = buildCharacter('#f5c542', '#1c1c1c');
+  const keeper = buildCharacter({ body: '#f5c542', accent: '#1c1c1c', helmet: 'cap', hair: 'short' });
   keeper.group.scale.setScalar(1.05);
   stage.scene.add(keeper.group);
 
   const defenders: Character[] = [];
   for (let i = 0; i < 5; i += 1) {
-    const defender = buildCharacter('#c23b3b', '#ffffff');
+    const defender = buildCharacter({ body: '#c23b3b', accent: '#ffffff', helmet: 'none', hair: 'short' });
     defender.group.visible = false;
     stage.scene.add(defender.group);
     defenders.push(defender);

@@ -12,8 +12,8 @@ import {
   type CrossingPickup,
   type CrossingScene,
 } from '@/lib/arcade/crossing3d';
+import { currentCharacter } from '@/lib/arcade/characters';
 import { sfxCoin, sfxHazard, sfxJump } from '@/lib/arcade/sfx';
-import { useCharacter } from '@/state/use-character';
 
 import { Game3D, Hud, type Frame3D } from './Game3D';
 
@@ -47,9 +47,10 @@ export function CrossingGame({
 }: {
   onFinish: (score: number, coins: number, hazards: number) => void;
 }) {
-  const { character } = useCharacter();
-  const skin = useRef({ body: character.body, accent: character.accent });
-  skin.current = { body: character.body, accent: character.accent };
+  // The whole character is a Look, so the scene gets gear and build as well as
+  // colour. Read synchronously: this figure's geometry is assembled once when
+  // the scene is built, which happens before the character hook's effect runs.
+  const skin = useRef(currentCharacter());
 
   const state = useRef<State>({
     row: 0, col: 3, over: false, scroll: 0, lanes: [], cars: [], pickups: [], coins: 0, hazards: 0, flash: 0,
@@ -188,7 +189,7 @@ export function CrossingGame({
     <Game3D<CrossingScene>
       ariaLabel="Crossing game board"
       className="h-[62vh] max-h-[520px] bg-[#bfd8e6]"
-      setup={(canvas) => createCrossingScene(canvas, skin.current.body, skin.current.accent)}
+      setup={(canvas) => createCrossingScene(canvas, skin.current)}
       onFrame={frame}
       onDispose={disposeCrossingScene}
       hud={
