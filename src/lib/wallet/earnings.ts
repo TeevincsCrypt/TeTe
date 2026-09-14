@@ -15,7 +15,6 @@
  * When a treasury exists, it settles against exactly these entries.
  */
 import { createId } from '@/lib/ids';
-import { LUNA_PER_NIM } from '@/lib/nimiq/units';
 
 const KEY = 'tete.earnings.v1';
 
@@ -100,8 +99,14 @@ export function totalLuna(entries: Earning[]): number {
   return entries.reduce((sum, entry) => sum + entry.luna, 0);
 }
 
-/** Minimum unpaid balance before a payout would be worth its own fee. */
-export const PAYOUT_THRESHOLD_LUNA = 10 * LUNA_PER_NIM;
+/**
+ * Minimum unpaid balance before a payout would be worth its own fee.
+ *
+ * An alias, not a second number: the screens showing progress towards a
+ * payout and the route deciding whether to make one must move together, so
+ * there is exactly one constant and it lives with the rule that enforces it.
+ */
+export { MIN_WITHDRAW_LUNA as PAYOUT_THRESHOLD_LUNA } from './withdrawal';
 
 function write(entries: Earning[]): void {
   if (typeof window === 'undefined') return;

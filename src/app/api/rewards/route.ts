@@ -4,7 +4,7 @@ import { GAMES, type GameId } from '@/lib/arcade/games';
 import { isNimiqAddressShape } from '@/lib/nimiq/address';
 import { recordActivity } from '@/lib/server/activity';
 import { hasDurableStore } from '@/lib/server/env';
-import { creditGameReward, rewardsBalanceKey } from '@/lib/server/rewards';
+import { creditGameReward, rewardsBalanceKey, withdrawnToday } from '@/lib/server/rewards';
 import { get } from '@/lib/server/store';
 
 export const runtime = 'nodejs';
@@ -26,8 +26,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Rewards are not configured on this deployment.' }, { status: 503 });
   }
 
-  const balance = (await get<number>(rewardsBalanceKey(address))) ?? 0;
-  return NextResponse.json({ balance });
+  const [balance, withdrawn] = await Promise.all([
+    get<number>(rewardsBalanceKey(address)),
+    withdrawnToday(address),
+  ]);
+  return NextResponse.json({ balance: balance ?? 0, withdrawnToday: withdrawn });
 }
 
 /**

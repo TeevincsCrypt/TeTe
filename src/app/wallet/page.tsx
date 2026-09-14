@@ -13,7 +13,7 @@ import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import {
   ApiError,
   fetchActivity,
-  fetchRewardBalance,
+  fetchRewardState,
   fetchStatus,
   lookupPlayer,
   tipPlayer,
@@ -28,6 +28,7 @@ import { pushNotice } from '@/lib/notifications/notifications';
 import { compactAddress } from '@/lib/nimiq/address';
 import { formatNim, LUNA_PER_NIM } from '@/lib/nimiq/units';
 import { PAYOUT_THRESHOLD_LUNA } from '@/lib/wallet/earnings';
+import { MAX_DAILY_WITHDRAW_LUNA, planWithdrawal } from '@/lib/wallet/withdrawal';
 import { useEarnings } from '@/state/use-earnings';
 import { useMiniApp } from '@/state/mini-app-provider';
 
@@ -55,6 +56,9 @@ export default function WalletPage() {
   const [balance, setBalance] = useState<number | null>(null);
   const [ready, setReady] = useState<boolean | null>(null);
   const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
+  // How much has already left today, so the withdraw tab can quote what a
+  // payout would actually send rather than the whole balance.
+  const [withdrawnToday, setWithdrawnToday] = useState(0);
 
   // Notices link straight to a tab, so honour ?tab= on arrival.
   useEffect(() => {
@@ -64,13 +68,14 @@ export default function WalletPage() {
 
   const refresh = useCallback(async () => {
     if (!address) return;
-    const [status, earned, feed] = await Promise.all([
+    const [status, rewards, feed] = await Promise.all([
       fetchStatus(),
-      fetchRewardBalance(address),
+      fetchRewardState(address),
       fetchActivity(address),
     ]);
     setReady(status.escrow);
-    setBalance(earned);
+    setBalance(rewards?.balance ?? null);
+    setWithdrawnToday(rewards?.withdrawnToday ?? 0);
     setActivity(feed);
   }, [address]);
 
@@ -127,6 +132,7 @@ export default function WalletPage() {
       {tab === 'withdraw' && (
         <WithdrawPanel
           balance={balance}
+          withdrawnToday={withdrawnToday}
           ready={ready}
           address={address}
           locale={locale}
@@ -144,23 +150,28 @@ export default function WalletPage() {
 type SendState =
   | { status: 'idle' }
   | { status: 'sending' }
-  | { status: 'sent'; sent: number; transaction: string }
+  | { status: 'sent'; sent: number; remaining: number; transaction: string }
   | { status: 'error'; message: string };
 
 /**
  * A real payout. The server checks the signature, reads what it has credited,
- * zeroes it, and sends from the treasury — the amount is never taken from
- * this screen, because a client-supplied balance is a client-supplied
- * withdrawal limit.
+ * decides what the day's remaining allowance permits, and sends that from the
+ * treasury — the amount is never taken from this screen, because a
+ * client-supplied balance is a client-supplied withdrawal limit.
+ *
+ * What this screen quotes comes from `planWithdrawal`, the same function the
+ * route decides with, so the figure on the button is the figure that lands.
  */
 function WithdrawPanel({
   balance,
+  withdrawnToday,
   ready,
   address,
   locale,
   onDone,
 }: {
   balance: number | null;
+  withdrawnToday: number;
   ready: boolean | null;
   address: string | null;
   locale: string;
@@ -170,14 +181,23 @@ function WithdrawPanel({
   const [copied, setCopied] = useState(false);
 
   const total = balance ?? 0;
-  const enough = total >= PAYOUT_THRESHOLD_LUNA;
+  const plan = planWithdrawal(total, withdrawnToday);
+  const overMinimum = total >= PAYOUT_THRESHOLD_LUNA;
+  const enough = plan.ok;
+  /** Held back by the daily ceiling, not by anything the player did wrong. */
+  const heldBack = plan.ok ? plan.remaining : overMinimum ? total : 0;
 
   async function withdraw() {
     if (!address) return;
     setSend({ status: 'sending' });
     try {
       const result = await withdrawRewards(address);
-      setSend({ status: 'sent', sent: result.sent, transaction: result.transaction });
+      setSend({
+        status: 'sent',
+        sent: result.sent,
+        remaining: result.remaining,
+        transaction: result.transaction,
+      });
       pushNotice('reward', 'Withdrawal sent', `${formatNim(result.sent)} NIM is on its way.`);
       onDone();
     } catch (cause: unknown) {
@@ -196,6 +216,12 @@ function WithdrawPanel({
         <p className="mt-2 text-[0.8125rem] leading-relaxed text-on-contrast/70">
           The treasury signed and broadcast it. It lands in your wallet once it confirms.
         </p>
+        {send.remaining > 0 && (
+          <p className="mt-2 text-[0.8125rem] leading-relaxed text-on-contrast/70">
+            {formatNim(send.remaining, { locale })} NIM is over today&rsquo;s withdrawal limit. It
+            stays on your balance — withdraw it tomorrow.
+          </p>
+        )}
         <div className="mt-4 flex items-center justify-center gap-2">
           <p className="min-w-0 truncate font-mono text-[0.6875rem] text-on-contrast/60">
             {send.transaction}
@@ -236,7 +262,7 @@ function WithdrawPanel({
               <span className="ml-1.5 text-[0.8125rem] text-faint">NIM</span>
             </p>
           </div>
-          <Chip tone={enough ? 'positive' : 'neutral'}>
+          <Chip tone={overMinimum ? 'positive' : 'neutral'}>
             Min {PAYOUT_THRESHOLD_LUNA / LUNA_PER_NIM} NIM
           </Chip>
         </div>
@@ -245,7 +271,7 @@ function WithdrawPanel({
           <div
             className={cn(
               'h-full rounded-full transition-[width] duration-500',
-              enough ? 'bg-positive' : 'bg-accent',
+              overMinimum ? 'bg-positive' : 'bg-accent',
             )}
             style={{ width: `${Math.min(100, (total / PAYOUT_THRESHOLD_LUNA) * 100)}%` }}
           />
@@ -270,9 +296,19 @@ function WithdrawPanel({
           : ready === false
             ? 'Payouts not configured here'
             : enough
-              ? `Withdraw ${formatNim(total, { locale })} NIM`
-              : `${formatNim(PAYOUT_THRESHOLD_LUNA - total, { locale })} NIM to go`}
+              ? `Withdraw ${formatNim(plan.ok ? plan.sending : 0, { locale })} NIM`
+              : total < PAYOUT_THRESHOLD_LUNA
+                ? `${formatNim(PAYOUT_THRESHOLD_LUNA - total, { locale })} NIM to go`
+                : "Daily limit reached — back tomorrow"}
       </Button>
+
+      {heldBack > 0 && send.status !== 'error' && (
+        <p className="text-[0.8125rem] leading-relaxed text-muted">
+          {formatNim(heldBack, { locale })} NIM is over today&rsquo;s{' '}
+          {MAX_DAILY_WITHDRAW_LUNA / LUNA_PER_NIM} NIM withdrawal limit. It stays on your
+          balance and is withdrawable tomorrow.
+        </p>
+      )}
 
       {send.status === 'error' && (
         <p role="alert" className="text-[0.8125rem] leading-relaxed text-negative">
@@ -282,8 +318,10 @@ function WithdrawPanel({
 
       <PhaseNote>
         Withdrawing asks Nimiq Pay to sign, proving the address is yours, and the
-        treasury sends the whole balance in one transaction. The minimum exists so a
-        payout is worth more than the transaction that carries it.
+        treasury sends it in one transaction. The minimum exists so a payout is worth
+        more than the transaction that carries it.
+        {heldBack === 0 &&
+          ` Up to ${MAX_DAILY_WITHDRAW_LUNA / LUNA_PER_NIM} NIM can leave per day; anything above that waits on your balance for the next one.`}
       </PhaseNote>
     </section>
   );
