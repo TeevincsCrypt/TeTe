@@ -4,6 +4,7 @@ import { GAMES, type GameId } from '@/lib/arcade/games';
 import { isNimiqAddressShape } from '@/lib/nimiq/address';
 import { recordActivity } from '@/lib/server/activity';
 import { hasDurableStore } from '@/lib/server/env';
+import { scoreOnLeaderboard } from '@/lib/server/leaderboard';
 import { creditGameReward, rewardsBalanceKey, withdrawnToday } from '@/lib/server/rewards';
 import { get } from '@/lib/server/store';
 
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
       label: GAMES.find((game) => game.id === gameId)?.name ?? gameId,
       href: '/arcade',
     });
+    await scoreOnLeaderboard(address, result.credited, 'arcade');
   }
 
   return NextResponse.json({ credited: result.credited, balance: result.balance });

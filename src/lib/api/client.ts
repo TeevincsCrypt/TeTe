@@ -530,16 +530,22 @@ export async function fetchActivity(address: string): Promise<ActivityEntry[] | 
   }
 }
 
+/** Where a player's NIM came from. Scored the same; shown separately. */
+export type LeaderboardSource = 'challenge' | 'arcade' | 'streak';
+
 export interface LeaderboardEntry {
   address: string;
   username?: string;
+  /** Total across every source — what the ranking and the prizes use. */
   luna: number;
+  /** The same total split by source. Absent on rows stored before the split. */
+  by?: Partial<Record<LeaderboardSource, number>>;
 }
 
 /**
- * Daily or weekly standings by real NIM won. The weekly top 3 are paid 100,
- * 50 and 30 NIM automatically at the end of the week — see
- * lib/server/leaderboard.ts.
+ * Daily or weekly standings by real NIM earned — challenges, arcade rounds
+ * and daily check-ins all count. The weekly top 3 are paid 100, 50 and 30
+ * NIM automatically at the end of the week — see lib/server/leaderboard.ts.
  */
 export async function fetchLeaderboard(period: 'daily' | 'weekly'): Promise<LeaderboardEntry[]> {
   const body = await get<{ entries: LeaderboardEntry[] }>(`/api/leaderboard?period=${period}`);
