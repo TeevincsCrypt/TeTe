@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { AlleyGame } from '@/components/arcade/AlleyGame';
-import { CrossingGame } from '@/components/arcade/CrossingGame';
 import { GameGlyph } from '@/components/arcade/GameGlyph';
 import { GameOverPopup } from '@/components/arcade/GameOverPopup';
 import { InvasionGame } from '@/components/arcade/InvasionGame';
@@ -39,6 +38,11 @@ const DriftGame = dynamic(
 const RushGame = dynamic(
   () => import('@/components/arcade/RushGame').then((mod) => mod.RushGame),
   { ssr: false, loading: loading3d('bg-[#1d2433]') },
+);
+
+const CrossingGame = dynamic(
+  () => import('@/components/arcade/CrossingGame').then((mod) => mod.CrossingGame),
+  { ssr: false, loading: loading3d('bg-[#bfd8e6]') },
 );
 
 /**
