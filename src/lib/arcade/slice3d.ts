@@ -117,6 +117,7 @@ export interface SliceScene {
 export function createSliceScene(canvas: HTMLCanvasElement): SliceScene {
   const stage = createStage(canvas, {
     sky: '#efe7de',
+    gradient: ['#f6f1e8', '#efe7de', '#d8cec0'],
     fog: null,
     fov: 50,
     camera: [0, 0, 21],

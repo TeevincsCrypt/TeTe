@@ -90,8 +90,11 @@ export function createCrossingScene(
 ): CrossingScene {
   const stage = createStage(canvas, {
     sky: '#bfd8e6',
-    fog: [20, 46],
+    gradient: ['#7db8e0', '#d6e8f2', '#7ba055'],
+    fog: [24, 54],
     fov: 46,
+    shadows: true,
+    shadowSpan: 14,
     // Raised and tilted down the board, so several rows of traffic read at
     // once — the game is about reading what is coming, not what is alongside.
     camera: [0, 8.2, 9.4],

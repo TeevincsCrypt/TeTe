@@ -157,8 +157,11 @@ export function createOverheatScene(
 ): OverheatScene {
   const stage = createStage(canvas, {
     sky: '#1b2a3a',
+    gradient: ['#16283d', '#3f5568', '#3a2b1c'],
     fog: [30, 90],
     fov: 50,
+    shadows: true,
+    shadowSpan: 14,
     camera: [0, 4, 16],
     lookAt: [0, 1, 0],
     ambient: 0.7,

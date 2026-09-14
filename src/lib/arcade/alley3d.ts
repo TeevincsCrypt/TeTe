@@ -107,6 +107,7 @@ export function createAlleyScene(
 ): AlleyScene {
   const stage = createStage(canvas, {
     sky: '#15110d',
+    gradient: ['#100d0a', '#2a2119', '#24201b'],
     fog: [26, 60],
     fov: 48,
     // Low and close, the way this genre is always framed: you read the fight

@@ -22,6 +22,8 @@ export interface Stage {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
+  /** The key light. Scenes that move far from the origin must move its target. */
+  sun: THREE.DirectionalLight;
 }
 
 export interface StageOptions {
@@ -36,6 +38,22 @@ export interface StageOptions {
   sun?: [x: number, y: number, z: number];
   ambient?: number;
   sunIntensity?: number;
+  /** Bounce colour from below. Outdoor scenes want their own ground here. */
+  bounce?: string;
+  /**
+   * Cast real shadows from the key light. One extra depth pass over the
+   * casters, so it is opt-in: worth it for a scene with a hero object on open
+   * ground, wasted on one that is mostly flat or enclosed.
+   */
+  shadows?: boolean;
+  /** Half-size of the shadow camera box. Tight is sharp; loose is blocky. */
+  shadowSpan?: number;
+  exposure?: number;
+  /**
+   * A vertical gradient backdrop, also used as the environment map so metals
+   * and glossy paint have something to reflect. [top, horizon, ground].
+   */
+  gradient?: [top: string, horizon: string, ground: string];
 }
 
 export function createStage(canvas: HTMLCanvasElement, options: StageOptions = {}): Stage {
@@ -48,27 +66,67 @@ export function createStage(canvas: HTMLCanvasElement, options: StageOptions = {
     sun = [-6, 10, 4],
     ambient = 0.75,
     sunIntensity = 1,
+    bounce = '#6b7a63',
+    shadows = false,
+    shadowSpan = 18,
+    exposure = 1.05,
+    gradient,
   } = options;
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.shadowMap.enabled = false;
+  // Colour management and a filmic curve. This is the single biggest step
+  // away from "flat 3D demo": without it, lit surfaces clip to chalk and the
+  // sky reads as paint rather than light.
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = exposure;
+
+  renderer.shadowMap.enabled = shadows;
+  if (shadows) renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
   const skyColor = new THREE.Color(sky);
-  scene.background = skyColor;
+  if (gradient) {
+    const env = skyGradient(gradient[0], gradient[1], gradient[2]);
+    scene.background = env;
+    scene.environment = env;
+  } else {
+    scene.background = skyColor;
+  }
   if (fog) scene.fog = new THREE.Fog(skyColor.getHex(), fog[0], fog[1]);
 
   const cam = new THREE.PerspectiveCamera(fov, 1, 0.1, 400);
   cam.position.set(cameraAt[0], cameraAt[1], cameraAt[2]);
   cam.lookAt(lookAt[0], lookAt[1], lookAt[2]);
 
-  scene.add(new THREE.AmbientLight('#e8f0ff', ambient));
+  // Sky above, ground bounce below. A single flat ambient lights every face
+  // identically, which is what makes untextured geometry look like cardboard;
+  // a hemisphere separates up from down for almost the same cost.
+  scene.add(new THREE.HemisphereLight(sky, bounce, ambient));
+  scene.add(new THREE.AmbientLight('#ffffff', ambient * 0.25));
+
   const key = new THREE.DirectionalLight('#fff4de', sunIntensity);
   key.position.set(sun[0], sun[1], sun[2]);
+  if (shadows) {
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    const box = key.shadow.camera;
+    box.left = -shadowSpan;
+    box.right = shadowSpan;
+    box.top = shadowSpan;
+    box.bottom = -shadowSpan;
+    box.near = 1;
+    box.far = 80;
+    // Without a bias, a large receiving plane self-shadows into stripes.
+    key.shadow.bias = -0.0015;
+    key.shadow.normalBias = 0.02;
+  }
   scene.add(key);
+  // The light needs a target in the scene for its shadow box to follow.
+  scene.add(key.target);
 
-  return { renderer, scene, camera: cam };
+  return { renderer, scene, camera: cam, sun: key };
 }
 
 export function resizeStage(stage: Stage, width: number, height: number) {
@@ -110,6 +168,128 @@ export function disposeStage(stage: Stage) {
   stage.renderer.dispose();
 }
 
+/**
+ * A vertical sky gradient, used as both backdrop and environment.
+ *
+ * The environment half matters more than it looks. `MeshStandardMaterial`
+ * reflects its surroundings when `metalness` is above zero, and with nothing
+ * to reflect it resolves to black — which is why a glossy car body reads as
+ * dark mud rather than paint. One tiny equirectangular gradient gives every
+ * metal and glossy surface in the scene something to pick up, at the cost of
+ * a 256x128 canvas.
+ */
+export function skyGradient(top: string, horizon: string, ground: string): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  const gradient = ctx.createLinearGradient(0, 0, 0, 128);
+  gradient.addColorStop(0, top);
+  gradient.addColorStop(0.48, horizon);
+  gradient.addColorStop(0.52, ground);
+  gradient.addColorStop(1, ground);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 256, 128);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+/**
+ * A tiling noise texture, drawn once on a canvas.
+ *
+ * Real surfaces are never one flat colour, and a flat colour is most of what
+ * makes untextured geometry read as a prototype. These are procedural rather
+ * than fetched: no asset to download on a phone, no loading state to handle,
+ * and the tile can be small because it repeats.
+ */
+export function noiseTexture(
+  base: string,
+  options: {
+    size?: number;
+    /** Speckles per tile, and how far they stray from the base colour. */
+    grain?: number;
+    contrast?: number;
+    repeat?: [number, number];
+    /** Larger, softer blotches under the grain, for patchy wear. */
+    patches?: number;
+  } = {},
+): THREE.CanvasTexture {
+  const { size = 128, grain = 2600, contrast = 26, repeat = [1, 1], patches = 0 } = options;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, size, size);
+
+  for (let i = 0; i < patches; i += 1) {
+    const r = size * (0.08 + Math.random() * 0.22);
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const shade = Math.round((Math.random() - 0.5) * contrast * 1.4);
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
+    const tone = shade > 0 ? 255 : 0;
+    gradient.addColorStop(0, `rgba(${tone},${tone},${tone},${Math.abs(shade) / 255})`);
+    gradient.addColorStop(1, `rgba(${tone},${tone},${tone},0)`);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+
+  for (let i = 0; i < grain; i += 1) {
+    const shade = Math.round((Math.random() - 0.5) * contrast);
+    const tone = shade > 0 ? 255 : 0;
+    ctx.fillStyle = `rgba(${tone},${tone},${tone},${Math.abs(shade) / 190})`;
+    ctx.fillRect(Math.random() * size, Math.random() * size, 1.3, 1.3);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(repeat[0], repeat[1]);
+  // Road surfaces are viewed at a glancing angle; without anisotropy the far
+  // half of the road smears into grey mush, which is exactly where the sense
+  // of speed and distance comes from.
+  texture.anisotropy = 8;
+  return texture;
+}
+
+/**
+ * A soft contact shadow to sit under a hero object.
+ *
+ * Real shadow maps are sharp and cheap only near the light's focus; a blob
+ * under the car grounds it at any distance for the price of one transparent
+ * quad, which is what mobile driving games have always done.
+ */
+export function blobShadow(radius = 1): THREE.Mesh {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, 'rgba(0,0,0,0.55)');
+  gradient.addColorStop(0.55, 'rgba(0,0,0,0.25)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(radius * 2, radius * 2),
+    new THREE.MeshBasicMaterial({
+      map: new THREE.CanvasTexture(canvas),
+      transparent: true,
+      depthWrite: false,
+    }),
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = 0.02;
+  return mesh;
+}
+
 /** A fixed set of hidden objects to show and place as a frame needs them. */
 export function pool<T extends THREE.Object3D>(scene: THREE.Scene, count: number, make: (i: number) => T): T[] {
   const items: T[] = [];
@@ -143,6 +323,7 @@ export function ground(
   );
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.set(at[0], at[1], at[2]);
+  mesh.receiveShadow = true;
   scene.add(mesh);
   return mesh;
 }
@@ -312,6 +493,10 @@ export function buildCharacter(look: Look): Character {
   const legL = limb(trim, leg, 0.64, [-0.12, 0.68, 0]);
   const legR = limb(trim, leg, 0.64, [0.12, 0.68, 0]);
 
+  group.traverse((object) => {
+    if ((object as THREE.Mesh).isMesh) object.castShadow = true;
+  });
+
   return { group, head, torso, armL, armR, legL, legR, body, cape };
 }
 
@@ -330,61 +515,236 @@ export function poseRun(character: Character, phase: number, swing = 0.9) {
   character.armR.rotation.x = a * 0.8;
 }
 
-/** An original low-poly car, painted with the player's chosen colour. */
-export function buildCar(color: string, length = 2.1): { group: THREE.Group; body: THREE.Mesh } {
+export interface Car {
+  group: THREE.Group;
+  body: THREE.Mesh;
+  paint: THREE.MeshStandardMaterial;
+  wheels: THREE.Mesh[];
+  brakes: THREE.MeshStandardMaterial;
+}
+
+/**
+ * An original car, built to read as a car rather than as a stack of boxes.
+ *
+ * The difference is almost entirely in the silhouette: a lower, wider body
+ * with a tapered nose, a cabin inset from the flanks and raked back, arches
+ * around the wheels, and a rear light bar. Paint is glossy and slightly
+ * metallic so the key light puts a highlight along the shoulder line, which
+ * is what actually sells it as a vehicle in motion.
+ *
+ * No real manufacturer's design, badge or proportions are reproduced.
+ */
+export function buildCar(color: string, length = 4.0): Car {
   const group = new THREE.Group();
 
-  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.4 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.36, length), bodyMat);
-  body.position.y = 0.32;
+  const paint = new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.22,
+    metalness: 0.55,
+  });
+  const glass = new THREE.MeshStandardMaterial({
+    color: '#10141d', roughness: 0.08, metalness: 0.6,
+  });
+  const trim = new THREE.MeshStandardMaterial({ color: '#15171c', roughness: 0.65 });
+
+  const W = 1.8;
+  const half = length / 2;
+
+  // Lower hull, sitting on the wheels.
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(W, 0.42, length), paint);
+  hull.position.y = 0.52;
+  hull.castShadow = true;
+  group.add(hull);
+
+  // Upper body, narrower and shorter — the step between the two is the
+  // shoulder line that catches the light.
+  const body = new THREE.Mesh(new THREE.BoxGeometry(W * 0.94, 0.34, length * 0.86), paint);
+  body.position.y = 0.86;
+  body.castShadow = true;
   group.add(body);
 
-  const cabin = new THREE.Mesh(
-    new THREE.BoxGeometry(0.78, 0.3, length * 0.5),
-    new THREE.MeshStandardMaterial({ color: '#12151c', roughness: 0.2 }),
-  );
-  cabin.position.set(0, 0.62, -0.05);
+  // Tapered nose: a wedge in front of the hull rather than a flat face.
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(W * 0.9, 0.3, 0.7), paint);
+  nose.position.set(0, 0.62, -half - 0.12);
+  nose.rotation.x = 0.12;
+  nose.castShadow = true;
+  group.add(nose);
+
+  // Cabin, raked and inset.
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(W * 0.78, 0.46, length * 0.4), glass);
+  cabin.position.set(0, 1.2, 0.18);
+  cabin.castShadow = true;
   group.add(cabin);
 
-  const wheelGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.22, 12);
-  const wheelMat = new THREE.MeshStandardMaterial({ color: '#111214', roughness: 0.8 });
-  for (const wx of [-0.55, 0.55]) {
-    for (const wz of [length / 2 - 0.42, -length / 2 + 0.42]) {
-      const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(W * 0.72, 0.1, length * 0.3), paint);
+  roof.position.set(0, 1.44, 0.22);
+  roof.castShadow = true;
+  group.add(roof);
+
+  // Rear spoiler.
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(W * 0.86, 0.07, 0.34), trim);
+  wing.position.set(0, 1.16, half - 0.1);
+  wing.castShadow = true;
+  group.add(wing);
+  for (const x of [-W * 0.34, W * 0.34]) {
+    const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, 0.12), trim);
+    stalk.position.set(x, 1.06, half - 0.1);
+    group.add(stalk);
+  }
+
+  // Wheels, with a rim face so they are not plain black cylinders, sunk into
+  // arches so the body sits over them rather than floating above.
+  const tyre = new THREE.CylinderGeometry(0.42, 0.42, 0.3, 18);
+  const rim = new THREE.CylinderGeometry(0.24, 0.24, 0.32, 12);
+  const tyreMat = new THREE.MeshStandardMaterial({ color: '#0e0f12', roughness: 0.9 });
+  const rimMat = new THREE.MeshStandardMaterial({ color: '#c9ced6', roughness: 0.3, metalness: 0.85 });
+  const brakes = new THREE.MeshStandardMaterial({
+    color: '#3a0d08', emissive: '#ff2d0a', emissiveIntensity: 0, roughness: 0.6,
+  });
+
+  const wheels: THREE.Mesh[] = [];
+  for (const wx of [-W / 2 + 0.06, W / 2 - 0.06]) {
+    for (const wz of [-half + 0.9, half - 0.85]) {
+      const wheel = new THREE.Mesh(tyre, tyreMat);
       wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(wx, 0.24, wz);
+      wheel.position.set(wx, 0.42, wz);
+      wheel.castShadow = true;
+      const face = new THREE.Mesh(rim, rimMat);
+      face.rotation.z = Math.PI / 2;
+      wheel.add(face);
       group.add(wheel);
+      wheels.push(wheel);
+
+      const arch = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.3, 1.06), trim);
+      arch.position.set(wx + (wx < 0 ? -0.02 : 0.02), 0.62, wz);
+      group.add(arch);
     }
   }
 
-  return { group, body };
+  // Lights. Emissive rather than real lights: a dozen point lights in frame
+  // is the fastest way to lose a phone's frame rate.
+  const headMat = new THREE.MeshStandardMaterial({
+    color: '#fffdf2', emissive: '#fff4cf', emissiveIntensity: 1.8, roughness: 0.15,
+  });
+  for (const x of [-W * 0.32, W * 0.32]) {
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.1), headMat);
+    lamp.position.set(x, 0.72, -half - 0.3);
+    group.add(lamp);
+  }
+
+  const tailBar = new THREE.Mesh(new THREE.BoxGeometry(W * 0.82, 0.1, 0.08), brakes);
+  tailBar.position.set(0, 0.86, half + 0.02);
+  group.add(tailBar);
+  for (const x of [-W * 0.3, W * 0.3]) {
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.08), brakes);
+    lamp.position.set(x, 0.7, half + 0.02);
+    group.add(lamp);
+  }
+
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.14, 0.06), trim);
+  plate.position.set(0, 0.56, half + 0.03);
+  group.add(plate);
+
+  return { group, body: hull, paint, wheels, brakes };
 }
 
-/** Procedural palm, for any game that wants a horizon with something on it. */
-export function buildPalm(): THREE.Group {
-  const group = new THREE.Group();
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.08, 0.13, 2.1, 6),
-    new THREE.MeshStandardMaterial({ color: '#6b4a2f', roughness: 0.9 }),
-  );
-  trunk.position.y = 1.05;
-  trunk.rotation.z = (Math.random() - 0.5) * 0.15;
-  group.add(trunk);
+const TRUNK_MAT = new THREE.MeshStandardMaterial({ color: '#6f5237', roughness: 0.95 });
+const FROND_MAT = new THREE.MeshStandardMaterial({
+  color: '#2e7d46', roughness: 0.8, side: THREE.DoubleSide,
+});
+const LEAF_MAT = new THREE.MeshStandardMaterial({ color: '#3c8a44', roughness: 0.9 });
+const LEAF_DARK = new THREE.MeshStandardMaterial({ color: '#2c6b36', roughness: 0.9 });
 
-  const frondMat = new THREE.MeshStandardMaterial({
-    color: '#2f7d4a',
-    roughness: 0.7,
-    side: THREE.DoubleSide,
-  });
-  for (let i = 0; i < 6; i += 1) {
-    const frond = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.16, 4), frondMat);
-    const angle = (i / 6) * Math.PI * 2;
-    frond.position.set(Math.cos(angle) * 0.32, 2.15, Math.sin(angle) * 0.32);
-    frond.rotation.x = Math.PI / 2 + Math.sin(angle) * 0.5;
-    frond.rotation.z = angle;
+/**
+ * A palm, tall and slightly leaning, with fronds that droop.
+ *
+ * Materials are module-level and shared across every palm in every scene:
+ * dozens of trees each owning a copy of the same material is a draw-call and
+ * memory cost for no visible difference.
+ */
+export function buildPalm(scale = 1): THREE.Group {
+  const group = new THREE.Group();
+  const height = (4.2 + Math.random() * 1.8) * scale;
+
+  // A few stacked segments with a slight bend read as a palm; one straight
+  // cylinder reads as a pole.
+  const segments = 4;
+  for (let i = 0; i < segments; i += 1) {
+    const t = i / segments;
+    const seg = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1 * (1 - t * 0.4) * scale, 0.14 * (1 - t * 0.3) * scale, height / segments, 6),
+      TRUNK_MAT,
+    );
+    seg.position.set(Math.sin(t * 1.6) * 0.16 * scale, (height / segments) * (i + 0.5), 0);
+    seg.rotation.z = -Math.cos(t * 1.6) * 0.06;
+    seg.castShadow = true;
+    group.add(seg);
+  }
+
+  const topX = Math.sin(1.6) * 0.16 * scale;
+  for (let i = 0; i < 7; i += 1) {
+    const angle = (i / 7) * Math.PI * 2 + Math.random() * 0.3;
+    const frond = new THREE.Mesh(
+      new THREE.ConeGeometry(0.3 * scale, 1.9 * scale, 4, 1, true),
+      FROND_MAT,
+    );
+    frond.position.set(topX + Math.cos(angle) * 0.55 * scale, height + 0.1, Math.sin(angle) * 0.55 * scale);
+    // Laid outward and drooping, rather than standing up like a shuttlecock.
+    frond.rotation.z = Math.cos(angle) * 1.25;
+    frond.rotation.x = -Math.sin(angle) * 1.25;
+    frond.castShadow = true;
     group.add(frond);
   }
+
+  const crown = new THREE.Mesh(new THREE.SphereGeometry(0.22 * scale, 8, 6), TRUNK_MAT);
+  crown.position.set(topX, height + 0.05, 0);
+  group.add(crown);
+
   return group;
+}
+
+/** A broadleaf tree, to break up a roadside that is otherwise all palms. */
+export function buildTree(scale = 1): THREE.Group {
+  const group = new THREE.Group();
+  const height = (2.4 + Math.random() * 1.4) * scale;
+
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.13 * scale, 0.2 * scale, height, 6),
+    TRUNK_MAT,
+  );
+  trunk.position.y = height / 2;
+  trunk.castShadow = true;
+  group.add(trunk);
+
+  // Three overlapping blobs at different heights, which reads as a canopy
+  // where a single sphere reads as a lollipop.
+  const blobs: [number, number, number, number][] = [
+    [0, height + 0.5 * scale, 0, 1.15],
+    [0.5 * scale, height + 0.1 * scale, 0.3 * scale, 0.82],
+    [-0.45 * scale, height + 0.25 * scale, -0.25 * scale, 0.74],
+  ];
+  for (const [x, y, z, r] of blobs) {
+    const blob = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(r * scale, 1),
+      Math.random() < 0.5 ? LEAF_MAT : LEAF_DARK,
+    );
+    blob.position.set(x, y, z);
+    blob.castShadow = true;
+    group.add(blob);
+  }
+
+  return group;
+}
+
+/** A low roadside bush, the cheapest way to stop a verge looking like felt. */
+export function buildBush(scale = 1): THREE.Mesh {
+  const bush = new THREE.Mesh(
+    new THREE.IcosahedronGeometry((0.45 + Math.random() * 0.3) * scale, 0),
+    Math.random() < 0.5 ? LEAF_MAT : LEAF_DARK,
+  );
+  bush.scale.y = 0.7;
+  bush.castShadow = true;
+  return bush;
 }
 
 /** A hazy skyline far enough back that fog does the rest of the work. */
