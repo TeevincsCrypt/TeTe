@@ -4,7 +4,6 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { AlleyGame } from '@/components/arcade/AlleyGame';
 import { GameGlyph } from '@/components/arcade/GameGlyph';
 import { GameOverPopup } from '@/components/arcade/GameOverPopup';
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, CrownIcon } from '@/components/shell/icons';
@@ -59,6 +58,11 @@ const SliceGame = dynamic(
 const PitchGame = dynamic(
   () => import('@/components/arcade/PitchGame').then((mod) => mod.PitchGame),
   { ssr: false, loading: loading3d('bg-[#101a24]') },
+);
+
+const AlleyGame = dynamic(
+  () => import('@/components/arcade/AlleyGame').then((mod) => mod.AlleyGame),
+  { ssr: false, loading: loading3d('bg-[#15110d]') },
 );
 
 /**

@@ -2,27 +2,28 @@
 
 import { useRef } from 'react';
 
+import {
+  createAlleyScene,
+  disposeAlleyScene,
+  updateAlleyScene,
+  type AlleyDrop,
+  type AlleyEnemy,
+  type AlleyItem,
+  type AlleyScene,
+} from '@/lib/arcade/alley3d';
 import { sfxCoin, sfxHazard, sfxHit } from '@/lib/arcade/sfx';
 import { useCharacter } from '@/state/use-character';
 
-import { GameCanvas, type Frame } from './GameCanvas';
-import { drawBrawler, drawCoin, drawHazard, drawStreetItem } from './sprites';
+import { Game3D, type Frame3D } from './Game3D';
 
 type Weapon = 'none' | 'pipe' | 'crate';
-
-interface Enemy {
-  x: number; y: number; hp: number; strike: number; cool: number;
-  hurt: number; down: number; shirt: string; speed: number;
-}
-interface Item { x: number; y: number; kind: 'pipe' | 'crate'; taken: boolean }
-interface Drop { x: number; y: number; kind: 'coin' | 'hazard'; life: number }
 
 interface State {
   started: boolean; over: boolean;
   px: number; py: number; facing: 1 | -1;
   strike: number; strikeCool: number; hurt: number; hp: number;
   weapon: Weapon; weaponUses: number;
-  enemies: Enemy[]; items: Item[]; drops: Drop[];
+  enemies: AlleyEnemy[]; items: AlleyItem[]; drops: AlleyDrop[];
   floored: number; coins: number; hazards: number; flash: number;
   wave: number; spawnCool: number;
   /** Press tracking, to tell a tap (strike) from a drag (move). */
@@ -40,7 +41,7 @@ const START: Omit<State, 'started'> = {
 const SHIRTS = ['#6d4aff', '#2b6cb0', '#b8342a', '#7a5230'];
 
 /**
- * Alley — a side-on street brawl where what is lying around decides the fight.
+ * Alley — a street brawl where what is lying around decides the fight.
  *
  * An original game in the beat-'em-up genre, built around the thing that genre
  * is remembered for: picking up whatever is on the floor and hitting people
@@ -52,6 +53,9 @@ const SHIRTS = ['#6d4aff', '#2b6cb0', '#b8342a', '#7a5230'];
  * Movement is a drag anywhere and a strike is a tap, which keeps both hands
  * off a virtual pad. Enemies close from both ends and hang back when the
  * player is armed, so a weapon buys space as well as damage.
+ *
+ * The floor band the game already used for depth is now actual depth, so where
+ * a punch lands is still decided by exactly the same numbers.
  */
 export function AlleyGame({
   onFinish,
@@ -59,8 +63,17 @@ export function AlleyGame({
   onFinish: (score: number, coins: number, hazards: number) => void;
 }) {
   const { character } = useCharacter();
+  const skin = useRef({ body: character.body, accent: character.accent });
+  skin.current = { body: character.body, accent: character.accent };
+
   const state = useRef<State>({ ...START, started: false });
   const done = useRef(false);
+
+  const scoreRef = useRef<HTMLDivElement | null>(null);
+  const hpRef = useRef<HTMLDivElement | null>(null);
+  const weaponRef = useRef<HTMLDivElement | null>(null);
+  const tallyRef = useRef<HTMLDivElement | null>(null);
+  const hintRef = useRef<HTMLDivElement | null>(null);
 
   function reset(width: number, height: number) {
     state.current = {
@@ -84,7 +97,7 @@ export function AlleyGame({
     }
   }
 
-  function frame({ ctx, dt, width, height, pointer }: Frame) {
+  function frame({ handle, dt, width, height, pointer }: Frame3D<AlleyScene>) {
     const s = state.current;
     if (!s.started) reset(width, height);
 
@@ -269,126 +282,78 @@ export function AlleyGame({
 
     s.flash *= Math.max(0, 1 - dt * 2.2);
 
-    // ---- draw --------------------------------------------------------------
-    ctx.clearRect(0, 0, width, height);
+    updateAlleyScene(handle, { ...s, layout: { floorTop, floorBottom } }, width, height);
 
-    // Back wall: brick, shutters, a street lamp — an alley, not a void.
-    ctx.fillStyle = '#2c2620';
-    ctx.fillRect(0, 0, width, floorTop);
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-    ctx.lineWidth = 1;
-    for (let row = 0; row * 16 < floorTop; row += 1) {
-      const y = row * 16;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-      for (let col = 0; col * 34 < width; col += 1) {
-        const x = col * 34 + (row % 2 ? 17 : 0);
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x, y + 16);
-        ctx.stroke();
+    if (scoreRef.current) scoreRef.current.textContent = String(s.floored);
+    if (hpRef.current) {
+      const bars = hpRef.current.children;
+      for (let i = 0; i < bars.length; i += 1) {
+        (bars[i] as HTMLElement).style.opacity = i < s.hp ? '1' : '0.2';
       }
     }
-    ctx.fillStyle = '#1d1915';
-    ctx.fillRect(width * 0.12, floorTop - 92, 78, 92);
-    ctx.fillRect(width * 0.66, floorTop - 74, 62, 74);
-    ctx.fillStyle = 'rgba(245,197,66,0.16)';
-    ctx.beginPath();
-    ctx.moveTo(width * 0.84, 0);
-    ctx.lineTo(width * 0.96, 0);
-    ctx.lineTo(width * 1.02, floorTop);
-    ctx.lineTo(width * 0.78, floorTop);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = '#3a352e';
-    ctx.fillRect(0, floorTop, width, height - floorTop);
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-    ctx.lineWidth = 2;
-    for (let i = 1; i < 5; i += 1) {
-      const y = floorTop + ((height - floorTop) * i) / 5;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
+    if (weaponRef.current) {
+      const armed = s.weapon !== 'none';
+      weaponRef.current.style.opacity = armed ? '1' : '0';
+      if (armed) weaponRef.current.textContent = `${s.weapon.toUpperCase()} ×${s.weaponUses}`;
     }
-
-    for (const item of s.items) {
-      if (item.taken) continue;
-      drawStreetItem(ctx, item.kind, item.x, item.y);
+    if (tallyRef.current) {
+      tallyRef.current.textContent = String(s.coins - s.hazards);
+      tallyRef.current.style.color = s.flash > 0.05 ? '#4ade80' : s.flash < -0.05 ? '#ff6b6b' : '#ffffff';
     }
-    for (const drop of s.drops) {
-      if (drop.kind === 'coin') drawCoin(ctx, drop.x, drop.y - 12, 11, performance.now() / 240);
-      else drawHazard(ctx, drop.x, drop.y - 12, 11);
+    if (hintRef.current) {
+      hintRef.current.textContent = s.over
+        ? 'TAP TO RESTART'
+        : 'DRAG TO MOVE · TAP TO STRIKE · TAP ON A WEAPON TO LIFT IT';
     }
-
-    // Depth sort, so someone standing further up the alley is drawn behind.
-    const cast = [
-      ...s.enemies.map((e) => ({ y: e.y, draw: () => {
-        if (e.down > 0) {
-          ctx.save();
-          ctx.globalAlpha = Math.max(0, e.down);
-          ctx.translate(e.x, e.y);
-          ctx.rotate(Math.PI / 2);
-          drawBrawler(ctx, 0, 0, 0.92, 1, 0, e.shirt, '#20313d');
-          ctx.restore();
-          return;
-        }
-        drawBrawler(
-          ctx, e.x, e.y, 0.92, s.px < e.x ? -1 : 1, e.strike, e.shirt, '#20313d', 'none', e.hurt,
-        );
-      } })),
-      // Drawn a size up on the opponents: in a crowd of four the one you are
-      // steering has to be findable at a glance, and colour alone was not
-      // doing it once two enemies overlapped.
-      // Trousers stay the fixed '#2f3a2a' regardless of character — only the
-      // shirt is the skinnable part, same as every other game's single body
-      // colour; the character's accent has no home here.
-      { y: s.py, draw: () => drawBrawler(
-        ctx, s.px, s.py, 1.18, s.facing, s.strike, character.body, '#2f3a2a', s.weapon, s.hurt,
-      ) },
-    ].sort((a, b) => a.y - b.y);
-    for (const c of cast) c.draw();
-
-    // ---- hud ---------------------------------------------------------------
-    ctx.fillStyle = '#eef2ea';
-    ctx.font = '900 34px Archivo, system-ui, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(String(s.floored), 16, 42);
-
-    for (let i = 0; i < 3; i += 1) {
-      ctx.fillStyle = i < s.hp ? '#ff6a1a' : 'rgba(238,242,234,0.2)';
-      ctx.fillRect(16 + i * 15, 52, 11, 6);
-    }
-
-    if (s.weapon !== 'none') {
-      ctx.font = '700 11px Archivo, system-ui, sans-serif';
-      ctx.fillStyle = '#f5c542';
-      ctx.fillText(`${s.weapon.toUpperCase()} ×${s.weaponUses}`, 16, 76);
-    }
-
-    drawCoin(ctx, width - 74, 32, 12);
-    ctx.font = '900 24px Archivo, system-ui, sans-serif';
-    ctx.fillStyle = s.flash > 0.05 ? '#4ade80' : s.flash < -0.05 ? '#ff6b6b' : '#eef2ea';
-    ctx.fillText(String(s.coins - s.hazards), width - 56, 41);
-
-    ctx.font = '700 11px Archivo, system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(238,242,234,0.55)';
-    ctx.fillText(
-      s.over ? 'TAP TO RESTART' : 'DRAG TO MOVE · TAP TO STRIKE · TAP ON A WEAPON TO LIFT IT',
-      16,
-      height - 14,
-    );
   }
 
   return (
-    <GameCanvas
-      running
-      onFrame={frame}
+    <Game3D<AlleyScene>
       ariaLabel="Alley game board"
-      className="h-[62vh] max-h-[520px] w-full rounded-[1.25rem] bg-[#2c2620]"
+      className="h-[62vh] max-h-[520px] bg-[#15110d]"
+      setup={(canvas) => createAlleyScene(canvas, skin.current.body, skin.current.accent)}
+      onFrame={frame}
+      onDispose={disposeAlleyScene}
+      hud={
+        <>
+          <div className="absolute left-3 top-3">
+            <div
+              className="rounded-lg bg-black/25 px-2.5 py-1 text-[1.9rem] font-black leading-none text-white drop-shadow"
+              style={{ fontFamily: 'Archivo, system-ui, sans-serif' }}
+              ref={scoreRef}
+            >
+              0
+            </div>
+            <div ref={hpRef} className="mt-1.5 flex gap-1">
+              <span className="h-1.5 w-3.5 rounded-sm bg-[#ff6a1a]" />
+              <span className="h-1.5 w-3.5 rounded-sm bg-[#ff6a1a]" />
+              <span className="h-1.5 w-3.5 rounded-sm bg-[#ff6a1a]" />
+            </div>
+            <div
+              ref={weaponRef}
+              className="mt-1.5 text-[0.62rem] font-bold tracking-[0.1em] text-[#f5c542] opacity-0 transition-opacity"
+            />
+          </div>
+
+          <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-lg bg-black/25 px-2.5 py-1.5">
+            <span className="size-3 rounded-full bg-[#f2c14e] shadow-[inset_-1px_-1px_2px_rgba(0,0,0,0.35)]" />
+            <div
+              ref={tallyRef}
+              className="text-[1.3rem] font-black leading-none text-white"
+              style={{ fontFamily: 'Archivo, system-ui, sans-serif' }}
+            >
+              0
+            </div>
+          </div>
+
+          <div
+            ref={hintRef}
+            className="absolute bottom-3 left-3 rounded-md bg-black/25 px-2 py-1 text-[0.62rem] font-bold tracking-wide text-white/90"
+          >
+            DRAG TO MOVE · TAP TO STRIKE · TAP ON A WEAPON TO LIFT IT
+          </div>
+        </>
+      }
     />
   );
 }
