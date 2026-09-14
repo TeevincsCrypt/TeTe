@@ -15,6 +15,7 @@
  * original blocky figure, coloured with the player's chosen arcade skin.
  */
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import type { Look } from './characters';
 
@@ -381,30 +382,250 @@ export function ground(
 
 export interface Character {
   group: THREE.Group;
-  head: THREE.Mesh;
-  torso: THREE.Mesh;
+  /**
+   * Everything above the hips. Bob and counter-rotation go here, not on the
+   * group, so the feet stay planted where the game put them.
+   *
+   * Its static parts — torso, head, gear — are baked into one mesh per
+   * material when the figure is built, so there is deliberately no handle for
+   * the head or the chest on their own. Anything that needs to move has its
+   * own pivot below.
+   */
+  spine: THREE.Group;
   armL: THREE.Group;
   armR: THREE.Group;
+  /** Forearm pivots, hanging from the arms. */
+  elbowL: THREE.Group;
+  elbowR: THREE.Group;
+  /** Wrist anchors — the place to attach anything the character carries. */
+  handL: THREE.Group;
+  handR: THREE.Group;
   legL: THREE.Group;
   legR: THREE.Group;
+  /** Shin pivots, hanging from the legs. */
+  kneeL: THREE.Group;
+  kneeR: THREE.Group;
   body: THREE.MeshStandardMaterial;
   /** Hangs from the shoulders; games can sway it. Absent unless the look has one. */
   cape?: THREE.Mesh;
 }
 
+/** One cross-section of a lofted body part: an ellipse at a height. */
+interface Ring {
+  y: number;
+  /** Half-width across the body. */
+  rx: number;
+  /** Half-depth front to back. Defaults to `rx`, giving a circular section. */
+  rz?: number;
+  /** Shifts the section sideways/forward, which is how a curve is built. */
+  x?: number;
+  z?: number;
+}
+
 /**
- * The arcade's player figure: an original low-poly human, roughly 1.6 units
- * tall, standing on y=0 and facing -Z.
+ * Build a smooth closed surface through a stack of elliptical cross-sections.
  *
- * Limbs hang from groups pivoted at the shoulder and hip rather than being
- * positioned outright, so a game can swing them by setting one rotation and
- * get a walk, a run or a flail without rebuilding anything.
+ * This is what replaced the boxes. A body is a series of sections that change
+ * shape as they climb — narrow at the waist, broad at the chest, tapering into
+ * the neck — and stacking those sections and skinning between them produces
+ * that in one mesh with no seams, which is the thing a pile of cuboids can
+ * never do however many are added. Normals are averaged across the whole
+ * surface afterwards, so it shades as one continuous form rather than as
+ * flat panels meeting at hard edges.
  *
- * The `Look` decides gear and proportions. Headgear and build do most of the
- * work: a sealed helmet on a heavy frame and a bare head on a slim one read
- * as different characters at arcade distance, where a colour swap alone does
- * not. Every piece is original geometry — no existing game's character or
- * costume is reproduced.
+ * Cheap enough to do per character: fourteen points a ring and a handful of
+ * rings is a couple of hundred triangles, which is less than the box figure
+ * it replaces once its separate meshes are counted.
+ */
+function loft(rings: Ring[], radial = 14): THREE.BufferGeometry {
+  const position: number[] = [];
+  const index: number[] = [];
+  const rows = rings.length;
+
+  for (const ring of rings) {
+    const rz = ring.rz ?? ring.rx;
+    const ox = ring.x ?? 0;
+    const oz = ring.z ?? 0;
+    for (let i = 0; i < radial; i += 1) {
+      const t = (i / radial) * Math.PI * 2;
+      position.push(ox + Math.cos(t) * ring.rx, ring.y, oz + Math.sin(t) * rz);
+    }
+  }
+
+  // Skin between consecutive rings. This winding puts the normals outward;
+  // the caps below are wound the other way round for the same reason.
+  for (let r = 0; r < rows - 1; r += 1) {
+    for (let i = 0; i < radial; i += 1) {
+      const a = r * radial + i;
+      const b = r * radial + ((i + 1) % radial);
+      const c = (r + 1) * radial + i;
+      const d = (r + 1) * radial + ((i + 1) % radial);
+      index.push(a, c, b, b, c, d);
+    }
+  }
+
+  const first = rings[0]!;
+  const last = rings[rows - 1]!;
+
+  const bottom = position.length / 3;
+  position.push(first.x ?? 0, first.y, first.z ?? 0);
+  for (let i = 0; i < radial; i += 1) index.push(bottom, i, (i + 1) % radial);
+
+  const top = position.length / 3;
+  position.push(last.x ?? 0, last.y, last.z ?? 0);
+  const base = (rows - 1) * radial;
+  for (let i = 0; i < radial; i += 1) {
+    index.push(top, base + ((i + 1) % radial), base + i);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+  geometry.setIndex(index);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/**
+ * A limb segment, hanging from y=0 down to y=-length.
+ *
+ * Hung rather than centred so a pivot group at the joint swings it from the
+ * joint. Slightly fuller just below the top and tapering to the far end, which
+ * is the difference between a limb and a dowel.
+ */
+function limbGeometry(rTop: number, rBottom: number, length: number): THREE.BufferGeometry {
+  const mid = rTop * 0.62 + rBottom * 0.38;
+  return loft(
+    [
+      { y: 0, rx: rTop * 0.94 },
+      { y: -length * 0.16, rx: rTop },
+      { y: -length * 0.55, rx: mid },
+      { y: -length * 0.9, rx: rBottom },
+      { y: -length, rx: rBottom * 0.82 },
+    ],
+    10,
+  );
+}
+
+/**
+ * A head: cranium above, jaw narrowing to a chin below.
+ *
+ * A sphere alone reads as a ball on a stick. Squeezing the lower half inward
+ * and pulling the chin forward is what turns it into a face, and it costs one
+ * pass over the vertices of a sphere nobody has to author.
+ */
+function headGeometry(radius: number): THREE.BufferGeometry {
+  const geometry = new THREE.SphereGeometry(radius, 15, 11);
+  const position = geometry.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < position.count; i += 1) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const z = position.getZ(i);
+    // 0 at the temples, 1 at the point of the chin.
+    const down = Math.max(0, -y / radius);
+    const narrow = 1 - 0.34 * down * down;
+    position.setX(i, x * narrow * 0.94);
+    position.setY(i, y * 1.14);
+    // The model faces -Z, so the chin reaches further that way as it narrows.
+    position.setZ(i, z * narrow - (z < 0 ? radius * 0.14 * down : 0));
+  }
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/**
+ * A rounded mass, for the parts that are closer to a blob than a tube.
+ *
+ * `segments` is worth setting deliberately. A body uses a lot of these, and a
+ * sphere at the default resolution is 280 triangles whether it is a shoulder
+ * or a pupil — which had the face costing more than the torso while covering
+ * a few pixels. Detail belongs where it is visible.
+ */
+function blob(
+  material: THREE.Material,
+  scale: [number, number, number],
+  at: [number, number, number],
+  segments: [number, number] = [12, 9],
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, segments[0], segments[1]), material);
+  mesh.scale.set(scale[0], scale[1], scale[2]);
+  mesh.position.set(at[0], at[1], at[2]);
+  return mesh;
+}
+
+/** Small enough on screen that anything more is triangles nobody can see. */
+const TINY: [number, number] = [6, 4];
+/** Joints and extremities: rounded, but read at a glance rather than studied. */
+const PLAIN: [number, number] = [10, 7];
+
+/**
+ * Collapse a group's meshes into one mesh per material.
+ *
+ * A body made of surfaces needs a lot of them — torso, neck, skull, ears,
+ * eyes, brows, hair, shoulder caps — and every one is its own draw call even
+ * though none of them ever moves relative to the others. Baking each
+ * material's meshes into a single buffer turns roughly fifteen calls into
+ * four, which matters on a phone and costs nothing visually: the vertices are
+ * transformed into the parent's space first, so the result is the same
+ * picture.
+ *
+ * Only ever applied to parts that are static relative to the group. Anything
+ * a game animates — limb pivots and what hangs from them — is left alone,
+ * which is why this takes an explicit list rather than walking children.
+ */
+function collapse(parent: THREE.Object3D, meshes: THREE.Mesh[]): void {
+  const byMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
+
+  for (const mesh of meshes) {
+    const material = mesh.material as THREE.Material;
+    mesh.updateMatrix();
+    const geometry = mesh.geometry.clone();
+    geometry.applyMatrix4(mesh.matrix);
+    // Merging needs every input to carry the same attributes; the primitives
+    // here differ in whether they have UVs, and nothing reads them.
+    geometry.deleteAttribute('uv');
+    geometry.deleteAttribute('uv1');
+    const list = byMaterial.get(material);
+    if (list) list.push(geometry);
+    else byMaterial.set(material, [geometry]);
+    parent.remove(mesh);
+    mesh.geometry.dispose();
+  }
+
+  for (const [material, geometries] of byMaterial) {
+    const merged = geometries.length === 1 ? geometries[0]! : mergeGeometries(geometries);
+    // A merge can fail if the inputs disagree about attributes. Falling back
+    // to separate meshes costs draw calls; dropping the parts costs the body.
+    if (!merged) {
+      for (const geometry of geometries) parent.add(new THREE.Mesh(geometry, material));
+      continue;
+    }
+    if (geometries.length > 1) for (const geometry of geometries) geometry.dispose();
+    const mesh = new THREE.Mesh(merged, material);
+    mesh.castShadow = true;
+    parent.add(mesh);
+  }
+}
+
+/**
+ * The arcade's player figure: an original stylised human, 1.67 units tall,
+ * standing on y=0 and facing -Z.
+ *
+ * Built as lofted surfaces rather than stacked boxes. That is the whole point
+ * of it: shoulders that slope into the arms, a waist narrower than the chest,
+ * limbs that taper, a head with a jaw. Every part reads as one continuous body
+ * at arcade distance, which a figure assembled from cuboids never does however
+ * carefully the cuboids are placed.
+ *
+ * The rig is a real one. Arms hang from shoulder pivots and carry elbow pivots
+ * below them; legs hang from hip pivots and carry knees; hands and feet are
+ * their own anchors. Everything above the hips hangs from `spine`, so a run
+ * can bob and counter-rotate the upper body while the feet stay where the game
+ * put them. Games that only know about `armL`/`legR` and set one rotation
+ * still work exactly as before — the extra joints default to a natural stance.
+ *
+ * Proportions come from `Look.bulk`, gear from the rest of it. Every piece is
+ * original geometry; no existing game's character or costume is reproduced.
  */
 export function buildCharacter(look: Look): Character {
   const {
@@ -426,247 +647,486 @@ export function buildCharacter(look: Look): Character {
   } = look;
 
   const group = new THREE.Group();
+  const spine = new THREE.Group();
+  group.add(spine);
 
   const skin = new THREE.MeshStandardMaterial({
     color: feline ? color : '#c98e63',
-    roughness: 0.8,
+    roughness: 0.62,
     map: spots ? peltTexture(color, spots) : null,
   });
+  // Cloth, not plastic: rough enough that the environment map reads as a soft
+  // sheen along the shoulders rather than a reflection.
   const body = new THREE.MeshStandardMaterial({
     color,
-    roughness: spots ? 0.9 : 0.6,
-    metalness: spots ? 0 : 0.05,
+    roughness: spots ? 0.88 : 0.68,
+    metalness: spots ? 0 : 0.04,
     map: spots ? peltTexture(color, spots) : null,
   });
-  const trim = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.7 });
+  const trim = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.6, metalness: 0.06 });
+  /**
+   * Limb covering. Normally the same cloth as the torso — but a furred
+   * character wears no sleeves, so arms in the exact body colour merged into
+   * the chest and the figure lost its arms entirely. A shade darker is enough
+   * to separate them while still reading as one coat.
+   */
+  const sleeve = feline
+    ? new THREE.MeshStandardMaterial({
+        color: new THREE.Color(color).multiplyScalar(0.78),
+        roughness: 0.88,
+        map: spots ? peltTexture(color, spots) : null,
+      })
+    : body;
+  const boot = new THREE.MeshStandardMaterial({ color: '#22252c', roughness: 0.42, metalness: 0.12 });
   const lit = glow
     ? new THREE.MeshStandardMaterial({
-        color: glow, emissive: glow, emissiveIntensity: 1.5, roughness: 0.3,
+        color: glow, emissive: glow, emissiveIntensity: 0.75, roughness: 0.3,
       })
     : null;
   const steel = new THREE.MeshStandardMaterial({
     color: '#aeb6c0', roughness: 0.3, metalness: 0.85,
   });
 
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46 * bulk, 0.56, 0.26 * bulk), body);
-  torso.position.y = 1.02;
-  group.add(torso);
+  // --- Heights every part is hung from. Keeping them named means a change to
+  // --- the build reads as a change to a body, not a hunt through magic numbers.
+  const HIP = 0.86;
+  const SHOULDER = 1.30;
+  const HEAD_Y = 1.545;
+  const b = bulk;
+  /**
+   * Bulk, softened, for anything that pushes a part sideways.
+   *
+   * A heavier build is thicker, but applying the full multiplier to shoulder
+   * offsets as well as to thicknesses compounds: the torso widens, the
+   * deltoid on top of it moves out, and the arm hung off that moves out
+   * again, so a 14% heavier character came out nearly half as wide again as
+   * a standard one. Real shoulders are about a quarter of a body's height
+   * whatever the build, so lateral placement only follows bulk part of the
+   * way.
+   */
+  const bw = 1 + (b - 1) * 0.55;
 
-  const hips = new THREE.Mesh(new THREE.BoxGeometry(0.42 * bulk, 0.16, 0.25 * bulk), trim);
-  hips.position.y = 0.71;
-  group.add(hips);
+  /**
+   * Torso as one surface from pelvis to trapezius: hips, a waist drawn in, the
+   * ribcage flaring above it, shoulders at their widest, then a quick taper
+   * into the neck. Deeper than it is wide nowhere — a human chest is an
+   * ellipse lying the other way, and getting that ratio wrong is most of why
+   * a box torso looks like furniture.
+   */
+  const torso = new THREE.Mesh(
+    loft([
+      { y: 0.72, rx: 0.134 * b, rz: 0.106 * b },
+      { y: 0.83, rx: 0.150 * b, rz: 0.114 * b },
+      { y: 0.97, rx: 0.132 * b, rz: 0.100 * b },
+      { y: 1.10, rx: 0.158 * bw, rz: 0.120 * b },
+      { y: 1.22, rx: 0.176 * bw, rz: 0.130 * b },
+      { y: SHOULDER, rx: 0.182 * bw, rz: 0.120 * b },
+      { y: 1.34, rx: 0.104 * bw, rz: 0.090 * b },
+    ]),
+    body,
+  );
+  spine.add(torso);
 
-  // A heavy build gets pauldrons, which is what makes it read as armoured
-  // rather than merely wide.
-  if (bulk > 1.1) {
+  // Deltoids. They round the shoulder line off and hide the seam where the
+  // arm leaves the body, which is the join that gives a jointed figure away.
+  for (const side of [-1, 1]) {
+    spine.add(blob(body, [0.068 * b, 0.078 * b, 0.076 * b], [side * 0.158 * bw, SHOULDER - 0.012, 0], PLAIN));
+  }
+
+  // A heavy build gets pauldrons over the deltoids — shaped caps, following
+  // the shoulder rather than sitting on it as a slab.
+  if (b > 1.1 && !feline) {
     for (const side of [-1, 1]) {
-      const pauldron = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.16, 0.3 * bulk), trim);
-      pauldron.position.set(side * (0.23 * bulk + 0.06), 1.26, 0);
-      group.add(pauldron);
+      const pauldron = blob(trim, [0.088 * b, 0.044 * b, 0.085 * b], [side * 0.158 * bw, SHOULDER + 0.03, 0], PLAIN);
+      pauldron.rotation.z = -side * 0.3;
+      spine.add(pauldron);
     }
   }
 
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.29), helmet === 'full' ? body : skin);
-  head.position.y = 1.47;
-  group.add(head);
+  // Long enough to see. It leans very slightly forward, the way a real neck
+  // meets the skull, rather than standing as a post.
+  const neck = new THREE.Mesh(
+    loft([
+      { y: 1.30, rx: 0.068 * b, rz: 0.064 * b },
+      { y: 1.40, rx: 0.054 * b, rz: 0.052 * b, z: -0.004 },
+      { y: 1.46, rx: 0.062 * b, rz: 0.060 * b, z: -0.008 },
+    ], 10),
+    skin,
+  );
+  spine.add(neck);
+
+  const headR = 0.118;
+  const head = new THREE.Mesh(headGeometry(headR), helmet === 'full' ? body : skin);
+  head.position.y = HEAD_Y;
+  spine.add(head);
+
+  // Ears, which cost two spheres and are surprisingly load-bearing: without
+  // them the side of the head reads as a shell rather than a head.
+  if (!feline && helmet !== 'full') {
+    for (const side of [-1, 1]) {
+      spine.add(blob(skin, [0.016, 0.034, 0.026], [side * headR * 0.94, HEAD_Y - 0.012, 0.012], TINY));
+    }
+  }
+
+  // A face. Several games turn the figure to face the camera, and at that
+  // point a blank oval is the one thing that still reads as a mannequin
+  // however good the body is — eyes are what make it a person. Skipped
+  // behind a sealed helmet or a visor, which are covering the face by
+  // definition, and on the feline, who gets a muzzle instead.
+  if (!feline && helmet !== 'full' && !visor) {
+    const iris = new THREE.MeshStandardMaterial({ color: '#2a2118', roughness: 0.35 });
+    const white = new THREE.MeshStandardMaterial({ color: '#efe6dc', roughness: 0.4 });
+    for (const side of [-1, 1]) {
+      // The model faces -Z, so the face is the -Z side of the skull.
+      const eye = blob(white, [0.019, 0.014, 0.01], [side * 0.042, HEAD_Y + 0.012, -headR * 0.9], TINY);
+      spine.add(eye);
+      const pupil = blob(iris, [0.011, 0.011, 0.008], [side * 0.043, HEAD_Y + 0.011, -headR * 0.95], TINY);
+      spine.add(pupil);
+      // A brow above each eye: it catches the key light and gives the face
+      // some structure instead of leaving the eyes floating on a curve.
+      const brow = blob(skin, [0.026, 0.008, 0.012], [side * 0.045, HEAD_Y + 0.038, -headR * 0.88], TINY);
+      spine.add(brow);
+    }
+  }
 
   if (hair === 'short') {
-    const top = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, 0.31), trim);
-    top.position.y = 1.62;
-    group.add(top);
+    // A cap of hair that follows the skull rather than a slab across the top.
+    const cap = blob(trim, [headR * 1.04, headR * 1.1, headR * 1.06], [0, HEAD_Y + 0.022, 0.008]);
+    spine.add(cap);
   } else if (hair === 'ponytail') {
-    const top = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, 0.31), trim);
-    top.position.y = 1.62;
-    group.add(top);
+    spine.add(blob(trim, [headR * 1.05, headR * 1.08, headR * 1.07], [0, HEAD_Y + 0.026, 0.01]));
     // Behind the head: the model faces -Z, so +Z is its back.
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.36, 0.12), trim);
-    tail.position.set(0, 1.46, 0.19);
-    tail.rotation.x = -0.35;
-    group.add(tail);
+    const tail = new THREE.Mesh(
+      loft([
+        { y: 0, rx: 0.032 },
+        { y: -0.07, rx: 0.038 },
+        { y: -0.19, rx: 0.026 },
+        { y: -0.24, rx: 0.009 },
+      ], 10),
+      trim,
+    );
+    tail.position.set(0, HEAD_Y + 0.035, 0.098);
+    tail.rotation.x = -0.2;
+    spine.add(tail);
   }
 
   if (helmet === 'cap') {
-    const crown = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.12, 0.32), body);
-    crown.position.y = 1.66;
-    group.add(crown);
-    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.04, 0.16), trim);
-    brim.position.set(0, 1.6, -0.22);
-    group.add(brim);
+    spine.add(blob(body, [headR * 1.1, headR * 0.92, headR * 1.1], [0, HEAD_Y + 0.045, 0.012]));
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.135, 0.135, 0.018, 16, 1, false, 0, Math.PI), trim);
+    brim.position.set(0, HEAD_Y + 0.035, -0.03);
+    brim.rotation.y = Math.PI;
+    spine.add(brim);
   } else if (helmet === 'full') {
-    const shell = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.34, 0.35), body);
-    shell.position.y = 1.5;
-    group.add(shell);
-    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.12), trim);
-    jaw.position.set(0, 1.38, -0.2);
-    group.add(jaw);
+    const shell = blob(body, [headR * 1.16, headR * 1.2, headR * 1.2], [0, HEAD_Y + 0.012, 0.008]);
+    spine.add(shell);
+    const jaw = blob(trim, [headR * 0.86, headR * 0.5, headR * 0.5], [0, HEAD_Y - 0.075, -0.045]);
+    spine.add(jaw);
   } else if (helmet === 'crest') {
-    const shell = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.33), body);
-    shell.position.y = 1.5;
-    group.add(shell);
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.22, 0.34), trim);
-    fin.position.y = 1.76;
-    group.add(fin);
+    spine.add(blob(body, [headR * 1.14, headR * 1.14, headR * 1.16], [0, HEAD_Y + 0.014, 0.006]));
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.075, 0.2), trim);
+    fin.position.set(0, HEAD_Y + 0.15, 0.01);
+    spine.add(fin);
   }
 
   if (visor) {
+    // A band wrapped round the front of the skull, not a plate stuck to it:
+    // an open cylinder arc curves with the head the way a visor would.
     const band = new THREE.Mesh(
-      new THREE.BoxGeometry(helmet === 'full' ? 0.3 : 0.32, 0.09, 0.06),
+      new THREE.CylinderGeometry(headR * 1.02, headR * 1.02, 0.052, 16, 1, true, Math.PI * 0.62, Math.PI * 0.76),
       new THREE.MeshStandardMaterial({
-        color: visor, emissive: visor, emissiveIntensity: 1.2, roughness: 0.2,
+        color: visor, emissive: visor, emissiveIntensity: 1.2,
+        roughness: 0.15, metalness: 0.4, side: THREE.DoubleSide,
       }),
     );
-    band.position.set(0, helmet === 'full' ? 1.52 : 1.5, helmet === 'full' ? -0.19 : -0.16);
-    group.add(band);
+    band.position.set(0, HEAD_Y + 0.015, 0);
+    spine.add(band);
   }
 
   let cape: THREE.Mesh | undefined;
   if (wantsCape) {
+    // Segmented and bowed, so it hangs round the back instead of standing off
+    // it like a board.
+    const cloth = new THREE.PlaneGeometry(0.52 * b, 0.88, 6, 6);
+    const position = cloth.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < position.count; i += 1) {
+      const x = position.getX(i);
+      const y = position.getY(i);
+      const drop = (0.44 - y) / 0.88; // 0 at the shoulders, 1 at the hem
+      position.setX(i, x * (1 + drop * 0.35));
+      position.setZ(i, drop * 0.05 - (x / (0.26 * b)) ** 2 * 0.06);
+    }
+    position.needsUpdate = true;
+    cloth.computeVertexNormals();
+    cloth.translate(0, -0.44, 0);
     cape = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5 * bulk, 0.86, 0.05),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide }),
+      cloth,
+      new THREE.MeshStandardMaterial({ color, roughness: 0.9, side: THREE.DoubleSide }),
     );
-    // Pivoted at the shoulders so a game can sway it from the top.
-    cape.geometry.translate(0, -0.43, 0);
-    cape.position.set(0, 1.3, 0.17 * bulk);
-    cape.rotation.x = -0.12;
-    group.add(cape);
+    cape.position.set(0, SHOULDER + 0.05, 0.125 * b);
+    cape.rotation.x = -0.1;
+    spine.add(cape);
   }
 
   if (pack) {
-    const bag = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.4, 0.18), trim);
-    bag.position.set(0, 1.06, 0.2 * bulk);
-    group.add(bag);
+    const bag = blob(trim, [0.16, 0.19, 0.09], [0, 1.08, 0.16 * b], PLAIN);
+    spine.add(bag);
+    for (const side of [-1, 1]) {
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.3, 0.02), trim);
+      strap.position.set(side * 0.1 * b, 1.18, -0.11 * b);
+      strap.rotation.x = 0.1;
+      spine.add(strap);
+    }
   }
 
   if (scarf) {
-    const collar = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.3), trim);
-    collar.position.y = 1.3;
-    group.add(collar);
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.06), trim);
-    tail.position.set(0.04, 1.14, 0.24);
-    tail.rotation.x = -0.5;
-    group.add(tail);
+    const collar = new THREE.Mesh(
+      loft([
+        { y: 1.3, rx: 0.135 * b, rz: 0.11 * b },
+        { y: 1.36, rx: 0.115 * b, rz: 0.098 * b },
+      ], 12),
+      trim,
+    );
+    spine.add(collar);
+    const tail = new THREE.Mesh(new THREE.PlaneGeometry(0.13, 0.46, 1, 4), trim);
+    tail.material = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.85, side: THREE.DoubleSide });
+    tail.position.set(0.05, 1.12, 0.15);
+    tail.rotation.x = -0.35;
+    spine.add(tail);
   }
 
   if (mask) {
-    const cover = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.22), trim);
-    cover.position.set(0, 1.38, -0.12);
-    group.add(cover);
-    // The hose loops down to the chest rig, which is most of what reads as
-    // a breather rather than a scarf.
-    const hose = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.34, 6), trim);
-    hose.position.set(0.14, 1.2, -0.12);
-    hose.rotation.z = 0.35;
-    group.add(hose);
+    const cover = blob(trim, [0.082, 0.058, 0.07], [0, HEAD_Y - 0.048, -0.072], PLAIN);
+    spine.add(cover);
+    // The hose loops down to the chest rig, which is most of what reads as a
+    // breather rather than a scarf.
+    const hose = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.3, 8), trim);
+    hose.position.set(0.085, 1.36, -0.075);
+    hose.rotation.z = 0.32;
+    spine.add(hose);
   }
 
   if (feline) {
-    const muzzle = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.14, 0.16), skin);
-    muzzle.position.set(0, 1.4, -0.2);
-    group.add(muzzle);
-    const nose = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, 0.06, 0.05),
-      new THREE.MeshStandardMaterial({ color: '#2b1d14', roughness: 0.6 }),
+    const muzzle = blob(skin, [0.062, 0.05, 0.07], [0, HEAD_Y - 0.038, -0.088], PLAIN);
+    spine.add(muzzle);
+    const nose = blob(
+      new THREE.MeshStandardMaterial({ color: '#2b1d14', roughness: 0.5 }),
+      [0.022, 0.016, 0.016],
+      [0, HEAD_Y - 0.022, -0.15],
+      TINY,
     );
-    nose.position.set(0, 1.42, -0.29);
-    group.add(nose);
+    spine.add(nose);
     for (const side of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.18, 4), skin);
-      ear.position.set(side * 0.11, 1.68, 0.02);
-      group.add(ear);
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.042, 0.085, 8), skin);
+      ear.position.set(side * 0.062, HEAD_Y + 0.128, 0.012);
+      ear.rotation.z = side * 0.18;
+      spine.add(ear);
     }
   }
 
   if (wantsTail) {
-    // Three tapering segments, each angled a little more, so it curves away
-    // from the hips instead of sticking out like a rod.
-    let y = 0.82;
-    let z = 0.18;
-    for (let i = 0; i < 3; i += 1) {
-      const seg = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.07 - i * 0.015, 0.09 - i * 0.015, 0.34, 6),
-        skin,
-      );
-      seg.position.set(0, y, z);
-      seg.rotation.x = -0.7 - i * 0.35;
-      group.add(seg);
-      y += 0.18 - i * 0.05;
-      z += 0.2 + i * 0.04;
+    // One curving surface rather than three rods: rings that shift back and
+    // down as they taper draw the curve into the geometry itself.
+    const rings: Ring[] = [];
+    for (let i = 0; i <= 6; i += 1) {
+      const t = i / 6;
+      rings.push({
+        y: -t * 0.34 - Math.sin(t * 1.5) * 0.06,
+        rx: 0.042 * (1 - t * 0.72),
+        z: t * 0.44,
+      });
     }
+    const tail = new THREE.Mesh(loft(rings, 8), skin);
+    tail.position.set(0, HIP + 0.02, 0.1 * b);
+    spine.add(tail);
   }
 
   if (lit) {
-    // Chest and shoulder circuitry. Thin strips rather than glowing panels:
-    // the point is a line of light tracing the body, not a lamp.
-    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.34, 0.02), lit);
-    chest.position.set(0, 1.04, -0.14 * bulk);
-    group.add(chest);
-    for (const side of [-1, 1]) {
-      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.2, 0.02), lit);
-      rib.position.set(side * 0.15 * bulk, 1.14, -0.14 * bulk);
-      rib.rotation.z = side * 0.6;
-      group.add(rib);
-    }
-    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.4 * bulk, 0.04, 0.02), lit);
-    belt.position.set(0, 0.79, -0.14 * bulk);
-    group.add(belt);
+    // Circuitry traced down the suit. Thin strips rather than glowing panels:
+    // the point is a line of light following the body, not a lamp.
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.26, 0.014), lit);
+    chest.position.set(0, 1.14, -0.128 * b);
+    spine.add(chest);
+    // A lit collar ring, following the torso section at the shoulders.
+    const collar = new THREE.Mesh(
+      loft([
+        { y: 1.315, rx: 0.113 * bw, rz: 0.098 * b },
+        { y: 1.335, rx: 0.11 * bw, rz: 0.096 * b },
+      ], 12),
+      lit,
+    );
+    spine.add(collar);
+    const belt = new THREE.Mesh(
+      loft([
+        { y: 0.9, rx: 0.139 * b, rz: 0.105 * b },
+        { y: 0.925, rx: 0.139 * b, rz: 0.105 * b },
+      ], 12),
+      lit,
+    );
+    spine.add(belt);
   }
 
-  const limb = (material: THREE.Material, w: number, h: number, at: [number, number, number]) => {
-    const pivot = new THREE.Group();
-    pivot.position.set(at[0], at[1], at[2]);
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), material);
-    // Hung below the pivot so rotating the group swings the limb from its joint.
-    mesh.position.y = -h / 2;
-    pivot.add(mesh);
-    group.add(pivot);
-    return pivot;
+  // --- Arms: shoulder pivot → upper arm → elbow pivot → forearm → hand. ------
+  const UPPER_ARM = 0.27;
+  const FOREARM = 0.25;
+  const armR0 = 0.055 * b;
+
+  const buildArm = (side: number): [THREE.Group, THREE.Group, THREE.Group] => {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(side * (0.152 * bw + 0.028), SHOULDER - 0.02, 0);
+    spine.add(shoulder);
+    shoulder.add(new THREE.Mesh(limbGeometry(armR0, armR0 * 0.82, UPPER_ARM), sleeve));
+
+    const elbow = new THREE.Group();
+    elbow.position.y = -UPPER_ARM;
+    shoulder.add(elbow);
+    elbow.add(blob(sleeve, [armR0 * 0.86, armR0 * 0.86, armR0 * 0.86], [0, 0, 0], PLAIN));
+    elbow.add(new THREE.Mesh(limbGeometry(armR0 * 0.82, armR0 * 0.66, FOREARM), sleeve));
+    // Joint and forearm are one piece of cloth; they may as well be one mesh.
+    collapse(elbow, elbow.children.filter((child) => (child as THREE.Mesh).isMesh) as THREE.Mesh[]);
+
+    const hand = new THREE.Group();
+    hand.position.y = -FOREARM;
+    elbow.add(hand);
+    // Flattened front to back and a little long, which is the shape of a hand
+    // at this distance; a cube is not.
+    hand.add(blob(skin, [armR0 * 0.82, armR0 * 1.25, armR0 * 0.52], [0, -armR0 * 0.9, 0], PLAIN));
+
+    // Arms rest slightly out from the body and a touch bent, never pinned
+    // straight against the ribs.
+    shoulder.rotation.z = -side * 0.09;
+    elbow.rotation.x = 0.16;
+    return [shoulder, elbow, hand];
   };
 
-  const arm = 0.15 * bulk;
-  const leg = 0.17 * bulk;
-  const shoulder = 0.23 * bulk + 0.08;
-  const armL = limb(body, arm, 0.5, [-shoulder, 1.24, 0]);
-  const armR = limb(body, arm, 0.5, [shoulder, 1.24, 0]);
-  // A prosthetic leg is a short thigh with a blade below it, so the thigh
-  // itself is cut back to leave room for the blade to read.
-  const thigh = prosthetic ? 0.3 : 0.64;
-  const legL = limb(trim, leg, thigh, [-0.12, 0.68, 0]);
-  const legR = limb(trim, leg, thigh, [0.12, 0.68, 0]);
+  const [armL, elbowL, handL] = buildArm(-1);
+  const [armR, elbowR, handR] = buildArm(1);
 
-  if (prosthetic) {
-    // Parented to the pivot so the blade swings with the leg, not the hip.
-    for (const pivot of [legL, legR]) {
-      const shin = new THREE.Mesh(new THREE.BoxGeometry(leg * 0.8, 0.4, leg * 0.8), steel);
-      shin.position.set(0, -0.5, 0);
-      pivot.add(shin);
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(leg * 0.7, 0.3, 0.1), steel);
-      blade.position.set(0, -0.82, 0.1);
-      blade.rotation.x = 0.6;
-      pivot.add(blade);
+  // --- Legs: hip pivot → thigh → knee pivot → shin → foot. ------------------
+  // A prosthetic is a short thigh over a steel shin and blade, so the thigh is
+  // cut back to leave the blade room to read.
+  const THIGH = prosthetic ? 0.3 : 0.4;
+  const SHIN = prosthetic ? 0.34 : 0.4;
+  const legR0 = 0.094 * b;
+
+  const buildLeg = (side: number): [THREE.Group, THREE.Group] => {
+    const hip = new THREE.Group();
+    hip.position.set(side * 0.082 * b, HIP - 0.02, 0);
+    spine.add(hip);
+    hip.add(new THREE.Mesh(limbGeometry(legR0, legR0 * 0.74, THIGH), trim));
+
+    const knee = new THREE.Group();
+    knee.position.y = -THIGH;
+    hip.add(knee);
+
+    if (prosthetic) {
+      knee.add(blob(steel, [legR0 * 0.7, legR0 * 0.7, legR0 * 0.7], [0, 0, 0], PLAIN));
+      knee.add(new THREE.Mesh(limbGeometry(legR0 * 0.5, legR0 * 0.3, SHIN), steel));
+      // A running blade: a curved leaf sweeping back from the shin.
+      const bladeRings: Ring[] = [];
+      for (let i = 0; i <= 5; i += 1) {
+        const t = i / 5;
+        bladeRings.push({
+          y: -SHIN - t * 0.2,
+          rx: 0.03 * (1 - t * 0.3),
+          rz: 0.012,
+          z: t * t * 0.2,
+        });
+      }
+      knee.add(new THREE.Mesh(loft(bladeRings, 8), steel));
+    } else {
+      knee.add(blob(trim, [legR0 * 0.78, legR0 * 0.78, legR0 * 0.78], [0, 0, 0], PLAIN));
+      knee.add(new THREE.Mesh(limbGeometry(legR0 * 0.76, legR0 * 0.5, SHIN), trim));
+      // A shoe: longer than it is wide, reaching forward past the ankle.
+      const foot = blob(boot, [legR0 * 0.62, legR0 * 0.46, 0.105], [0, -SHIN - 0.025, -0.038], PLAIN);
+      knee.add(foot);
     }
-  }
+
+    collapse(knee, knee.children.filter((child) => (child as THREE.Mesh).isMesh) as THREE.Mesh[]);
+    return [hip, knee];
+  };
+
+  const [legL, kneeL] = buildLeg(-1);
+  const [legR, kneeR] = buildLeg(1);
+
+  // A standing figure is never perfectly straight-legged.
+  kneeL.rotation.x = -0.06;
+  kneeR.rotation.x = -0.06;
+
+  /*
+   * Bake the body. Every direct mesh child of `spine` is static by
+   * construction — the limbs are Groups, so they are skipped automatically —
+   * and the cape is the one exception, because games sway it.
+   */
+  const statics = spine.children.filter(
+    (child) => (child as THREE.Mesh).isMesh && child !== cape,
+  ) as THREE.Mesh[];
+  collapse(spine, statics);
 
   group.traverse((object) => {
     if ((object as THREE.Mesh).isMesh) object.castShadow = true;
   });
 
-  return { group, head, torso, armL, armR, legL, legR, body, cape };
+  return {
+    group, spine,
+    armL, armR, elbowL, elbowR, handL, handR,
+    legL, legR, kneeL, kneeR,
+    body, cape,
+  };
 }
 
 /**
- * Swing a character's limbs.
+ * Swing a character's limbs into a run.
  *
  * `phase` advances with distance or time; `swing` is how far the limbs travel,
- * so 0 stands still and a larger value reads as a harder run. Arms lead the
- * opposite leg, which is the detail that stops a walk looking like a shuffle.
+ * so 0 stands still and a larger value reads as a harder run.
+ *
+ * The gait is what stops this reading as a puppet. Arms lead the opposite leg.
+ * Knees only bend one way, and bend hardest as the leg travels back and folds
+ * up to recover — a leg that stays straight through the whole cycle is the
+ * single biggest tell of a rigid figure. Elbows hold a bend and pump. The
+ * upper body rises on each drive and counter-rotates against the legs, which
+ * is why a real runner's shoulders and hips never face the same way at once.
  */
 export function poseRun(character: Character, phase: number, swing = 0.9) {
-  const a = Math.sin(phase) * swing;
-  character.legL.rotation.x = a;
-  character.legR.rotation.x = -a;
-  character.armL.rotation.x = -a * 0.8;
-  character.armR.rotation.x = a * 0.8;
+  const a = Math.sin(phase);
+  const swingL = a * swing;
+  const swingR = -a * swing;
+
+  character.legL.rotation.x = swingL;
+  character.legR.rotation.x = swingR;
+  // Negative bends the knee backwards, which is the only way it goes.
+  character.kneeL.rotation.x = -0.1 - Math.max(0, -swingL) * 1.7;
+  character.kneeR.rotation.x = -0.1 - Math.max(0, -swingR) * 1.7;
+
+  character.armL.rotation.x = -swingL * 0.7;
+  character.armR.rotation.x = -swingR * 0.7;
+  character.elbowL.rotation.x = 0.5 + Math.max(0, -swingL) * 0.5;
+  character.elbowR.rotation.x = 0.5 + Math.max(0, -swingR) * 0.5;
+
+  // Twice the stride frequency: the body rises on each foot strike, not once
+  // per full cycle.
+  character.spine.position.y = Math.abs(Math.cos(phase)) * 0.035 * swing;
+  character.spine.rotation.y = -a * 0.1 * swing;
+  character.spine.rotation.x = 0.06 * swing;
+}
+
+/**
+ * Settle a character into a natural standing pose.
+ *
+ * The counterpart to `poseRun`: games that stop the figure need somewhere to
+ * put it back to, and "every joint at zero" is a mannequin.
+ */
+export function poseStand(character: Character) {
+  character.legL.rotation.x = 0;
+  character.legR.rotation.x = 0;
+  character.kneeL.rotation.x = -0.06;
+  character.kneeR.rotation.x = -0.06;
+  character.armL.rotation.x = 0;
+  character.armR.rotation.x = 0;
+  character.elbowL.rotation.x = 0.16;
+  character.elbowR.rotation.x = 0.16;
+  character.spine.position.y = 0;
+  character.spine.rotation.set(0, 0, 0);
 }
 
 export interface Car {

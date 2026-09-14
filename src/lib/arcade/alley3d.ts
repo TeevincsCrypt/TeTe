@@ -161,17 +161,19 @@ export function createAlleyScene(
   const player = buildCharacter(look);
   stage.scene.add(player.group);
 
+  // Parented to the hand rather than the shoulder, so a swing carries the
+  // weapon through the elbow instead of pivoting it around the armpit.
   const heldPipe = buildPipe();
   heldPipe.visible = false;
-  player.armR.add(heldPipe);
-  heldPipe.position.set(0, -0.62, -0.5);
+  player.handR.add(heldPipe);
+  heldPipe.position.set(0, -0.06, -0.42);
   heldPipe.rotation.set(Math.PI / 2, 0, Math.PI / 2);
 
   const heldCrate = buildCrate();
   heldCrate.visible = false;
   heldCrate.scale.setScalar(0.7);
-  player.armR.add(heldCrate);
-  heldCrate.position.set(0, -0.7, -0.35);
+  player.handR.add(heldCrate);
+  heldCrate.position.set(0, -0.1, -0.26);
 
   const enemies: Character[] = [];
   for (let i = 0; i < 8; i += 1) {
@@ -220,6 +222,7 @@ export function updateAlleyScene(
   // The swing: the arm comes over as `strike` runs from 1 back to 0.
   const swing = Math.sin(Math.max(0, Math.min(1, s.strike)) * Math.PI);
   player.armR.rotation.x = -swing * 2.2;
+  player.elbowR.rotation.x = 0.2 + swing * 1.1;
   player.armL.rotation.x = swing * 0.5;
   // Hurt reads as a stagger rather than only a colour change.
   player.group.rotation.z = s.hurt > 0 ? Math.sin(s.hurt * 22) * 0.16 : 0;

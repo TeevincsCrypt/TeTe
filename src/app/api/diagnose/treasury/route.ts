@@ -1,6 +1,8 @@
+import { timingSafeEqual } from 'node:crypto';
+
 import { NextResponse } from 'next/server';
 
-import { hasDurableStore, hasTreasury, MAX_PAYOUT_LUNA, TREASURY_ADDRESS } from '@/lib/server/env';
+import { ADMIN_TOKEN, hasAdmin, hasDurableStore, hasTreasury, MAX_PAYOUT_LUNA, TREASURY_ADDRESS } from '@/lib/server/env';
 import { rewardsBalanceKey } from '@/lib/server/rewards';
 import { accountBalance, transactionsFor, type RpcTransaction } from '@/lib/server/rpc';
 import { get } from '@/lib/server/store';
@@ -33,11 +35,30 @@ const nim = (luna: number | null) => (luna === null ? null : luna / 100_000);
  *    reaching the chain at all rather than reaching the wrong place.
  *  - `outgoing` present but `unconfirmed` means they reach the chain and stall.
  *
- * Read-only and public by nature: a balance and a transaction list for an
- * address anybody can read off a block explorer. No key, passphrase or
- * signature is exposed, and nothing here can move money.
+ * Nothing here can move money: no key, passphrase or signature is exposed,
+ * and every call is a read. It is still gated behind the admin token, for two
+ * reasons. It takes an arbitrary address and reports that player's internal
+ * reward balance, which is nobody else's business; and it will happily make a
+ * hundred RPC calls per request, which is a free amplifier pointed at the
+ * node. Chain data is public, but neither of those has to be.
+ *
+ * The gate is the same token as /api/admin/credit and is compared in constant
+ * time, so a wrong guess reveals nothing by how long it takes to fail.
  */
+function authorized(request: Request): boolean {
+  if (!hasAdmin) return false;
+  const given = Buffer.from((request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, ''));
+  const want = Buffer.from(ADMIN_TOKEN as string);
+  return given.length === want.length && timingSafeEqual(given, want);
+}
+
 export async function GET(request: Request) {
+  // A wrong or missing token is 404, not 401: an endpoint that announces
+  // itself to anyone who knocks is an invitation to keep knocking.
+  if (!authorized(request)) {
+    return NextResponse.json({ error: 'Not found.' }, { status: 404 });
+  }
+
   const params = new URL(request.url).searchParams;
   const address = params.get('address')?.trim() || null;
   const hash = params.get('hash')?.trim() || null;
