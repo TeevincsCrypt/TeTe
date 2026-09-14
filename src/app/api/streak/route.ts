@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { isNimiqAddressShape } from '@/lib/nimiq/address';
 import { recordActivity } from '@/lib/server/activity';
 import { hasDurableStore } from '@/lib/server/env';
+import { scoreOnLeaderboard } from '@/lib/server/leaderboard';
 import { claimStreakReward, readStreak } from '@/lib/server/rewards';
 
 export const runtime = 'nodejs';
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
     label: `Day ${result.streak} check-in`,
     href: '/arcade',
   });
+  await scoreOnLeaderboard(address, result.credited, 'streak');
 
   return NextResponse.json({
     credited: result.credited,

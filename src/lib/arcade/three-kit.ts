@@ -573,7 +573,7 @@ const PLAIN: [number, number] = [10, 7];
  * a game animates — limb pivots and what hangs from them — is left alone,
  * which is why this takes an explicit list rather than walking children.
  */
-function collapse(parent: THREE.Object3D, meshes: THREE.Mesh[]): void {
+function collapse(parent: THREE.Object3D, meshes: THREE.Mesh[]): Map<THREE.Material, THREE.Mesh> {
   const byMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
 
   for (const mesh of meshes) {
@@ -592,19 +592,29 @@ function collapse(parent: THREE.Object3D, meshes: THREE.Mesh[]): void {
     mesh.geometry.dispose();
   }
 
+  const made = new Map<THREE.Material, THREE.Mesh>();
   for (const [material, geometries] of byMaterial) {
     const merged = geometries.length === 1 ? geometries[0]! : mergeGeometries(geometries);
     // A merge can fail if the inputs disagree about attributes. Falling back
     // to separate meshes costs draw calls; dropping the parts costs the body.
     if (!merged) {
-      for (const geometry of geometries) parent.add(new THREE.Mesh(geometry, material));
+      for (const geometry of geometries) {
+        const fallback = new THREE.Mesh(geometry, material);
+        fallback.castShadow = true;
+        parent.add(fallback);
+        made.set(material, fallback);
+      }
       continue;
     }
     if (geometries.length > 1) for (const geometry of geometries) geometry.dispose();
     const mesh = new THREE.Mesh(merged, material);
     mesh.castShadow = true;
     parent.add(mesh);
+    made.set(material, mesh);
   }
+  // Keyed by material so a caller that needs a handle on one of its own
+  // surfaces — a car recolouring its paint, say — can find it again.
+  return made;
 }
 
 /**
@@ -1137,136 +1147,299 @@ export interface Car {
   brakes: THREE.MeshStandardMaterial;
 }
 
+/** One cross-section of a swept body, taken across the car at a point along it. */
+interface Section {
+  z: number;
+  /** Half-width across the car. */
+  w: number;
+  /** Half-height. */
+  h: number;
+  /** Height of the section's centre above the ground. */
+  y: number;
+  /**
+   * How square the section is. 2 is a plain ellipse; higher flattens the roof
+   * and the flanks while keeping the shoulders round, which is the shape of
+   * actual car bodywork and the reason a car cannot be drawn with ellipses
+   * any more than it can with boxes.
+   */
+  n?: number;
+}
+
 /**
- * An original car, built to read as a car rather than as a stack of boxes.
+ * Sweep a surface along the length of the car through a series of sections.
  *
- * The difference is almost entirely in the silhouette: a lower, wider body
- * with a tapered nose, a cabin inset from the flanks and raked back, arches
- * around the wheels, and a rear light bar. Paint is glossy and slightly
- * metallic so the key light puts a highlight along the shoulder line, which
- * is what actually sells it as a vehicle in motion.
+ * The counterpart to `loft`, turned on its side: sections advance along Z and
+ * each is a superellipse in XY. That single change of primitive is what lets
+ * a body taper into a nose, swell over the wheel arches and draw back into a
+ * tail as one continuous panel — the things a stack of cuboids approximates
+ * with steps and edges.
+ */
+function sweep(sections: Section[], radial = 18): THREE.BufferGeometry {
+  const position: number[] = [];
+  const index: number[] = [];
+  const rows = sections.length;
+
+  for (const section of sections) {
+    const e = 2 / (section.n ?? 2);
+    for (let i = 0; i < radial; i += 1) {
+      const t = (i / radial) * Math.PI * 2;
+      const c = Math.cos(t);
+      const s = Math.sin(t);
+      position.push(
+        section.w * Math.sign(c) * Math.abs(c) ** e,
+        section.y + section.h * Math.sign(s) * Math.abs(s) ** e,
+        section.z,
+      );
+    }
+  }
+
+  for (let r = 0; r < rows - 1; r += 1) {
+    for (let i = 0; i < radial; i += 1) {
+      const a = r * radial + i;
+      const b = r * radial + ((i + 1) % radial);
+      const c = (r + 1) * radial + i;
+      const d = (r + 1) * radial + ((i + 1) % radial);
+      index.push(a, b, d, a, d, c);
+    }
+  }
+
+  const first = sections[0]!;
+  const last = sections[rows - 1]!;
+
+  const front = position.length / 3;
+  position.push(0, first.y, first.z);
+  for (let i = 0; i < radial; i += 1) index.push(front, (i + 1) % radial, i);
+
+  const back = position.length / 3;
+  position.push(0, last.y, last.z);
+  const base = (rows - 1) * radial;
+  for (let i = 0; i < radial; i += 1) index.push(back, base + i, base + ((i + 1) % radial));
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+  geometry.setIndex(index);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/**
+ * How much geometry a car is worth: the one the player drives, or one of the
+ * many crossing the road behind them.
+ */
+export type CarDetail = 'hero' | 'traffic';
+
+/**
+ * An original car, 4 units long, nose pointing -Z and sitting on y=0.
+ *
+ * Built as swept panels, not stacked boxes. The body is one surface running
+ * the length of the car: a low tapered nose, flanks that swell over each
+ * wheel arch and pull back in between them, and a tail that narrows again.
+ * A separate canopy carries the windscreen rake, the roof and the rear
+ * screen. Because both are continuous, the light runs along the shoulder
+ * line in an unbroken highlight, which is what actually reads as car
+ * bodywork — a box stack breaks it into facets at every seam.
+ *
+ * Built at a canonical size and scaled to the length asked for, so the
+ * proportions cannot drift apart. Sizing the geometry from `length` while
+ * leaving the width fixed is exactly how Crossing once ended up with cars
+ * wider than they were long, and taller than one of its grid tiles.
  *
  * No real manufacturer's design, badge or proportions are reproduced.
  */
-export function buildCar(color: string, length = 4.0): Car {
+export function buildCar(color: string, length = 4.0, detail: CarDetail = 'hero'): Car {
   const group = new THREE.Group();
+  /**
+   * How finely to tessellate. Drift has one car filling the screen and can
+   * afford the sections; Crossing has twenty of them at barely half scale,
+   * where the same mesh is detail nobody can see and frame time everybody
+   * can feel. Traffic drops the ring counts and the mirrors, which together
+   * are most of the cost.
+   */
+  const hero = detail === 'hero';
+  const ring = (fine: number, coarse: number) => (hero ? fine : coarse);
 
-  const paint = new THREE.MeshStandardMaterial({
-    color,
-    roughness: 0.22,
-    metalness: 0.55,
-  });
+  const paint = new THREE.MeshStandardMaterial({ color, roughness: 0.24, metalness: 0.5 });
   const glass = new THREE.MeshStandardMaterial({
-    color: '#10141d', roughness: 0.08, metalness: 0.6,
+    color: '#141922', roughness: 0.06, metalness: 0.5,
   });
-  const trim = new THREE.MeshStandardMaterial({ color: '#15171c', roughness: 0.65 });
+  const trim = new THREE.MeshStandardMaterial({ color: '#15171c', roughness: 0.6 });
+  /**
+   * Alloy, not a mirror. At high metalness and low roughness a rim reflects
+   * whatever surrounds it, and surrounded by Crossing's grass that meant
+   * every car rolling on green discs. Enough sheen to catch the key light,
+   * not enough to paint itself with the scenery.
+   */
+  const chrome = new THREE.MeshStandardMaterial({
+    color: '#b9bfc8', roughness: 0.52, metalness: 0.35,
+  });
 
-  // Built at a canonical size and scaled to the length asked for, so the
-  // proportions cannot drift apart. Sizing the geometry from `length` while
-  // leaving the width fixed is exactly how Crossing ended up with cars wider
-  // than they were long, and taller than one of its grid tiles.
   const L = 4.0;
-  const W = 1.8;
-  const half = L / 2;
+  const HALF = L / 2;
+  /** Where the wheels sit, and so where the arches have to swell. */
+  const FRONT_AXLE = -1.15;
+  const REAR_AXLE = 1.2;
 
-  // Lower hull, sitting on the wheels.
-  const hull = new THREE.Mesh(new THREE.BoxGeometry(W, 0.42, L), paint);
-  hull.position.y = 0.52;
-  hull.castShadow = true;
-  group.add(hull);
+  // The body, nose to tail. The widest points are the two axles; the waist
+  // between them is drawn in, which is what gives a car its hips.
+  const shell = new THREE.Mesh(
+    sweep([
+      { z: -HALF, w: 0.44, h: 0.09, y: 0.58, n: 3.4 },
+      { z: -1.82, w: 0.68, h: 0.16, y: 0.57, n: 4.0 },
+      { z: -1.5, w: 0.82, h: 0.22, y: 0.57, n: 4.8 },
+      { z: FRONT_AXLE, w: 0.88, h: 0.27, y: 0.59, n: 5.4 },
+      { z: -0.5, w: 0.83, h: 0.30, y: 0.63, n: 5.6 },
+      { z: 0.25, w: 0.83, h: 0.31, y: 0.64, n: 5.6 },
+      { z: REAR_AXLE, w: 0.89, h: 0.30, y: 0.63, n: 5.4 },
+      // The tail stays broad and full-height rather than tapering away. A
+      // body that narrows to a point at both ends is a boat; a car has a
+      // rear deck and a flat panel under it, and this is the view the
+      // driving game spends all its time looking at.
+      { z: 1.78, w: 0.86, h: 0.28, y: 0.63, n: 5.0 },
+      { z: HALF, w: 0.78, h: 0.25, y: 0.63, n: 4.6 },
+    ], ring(16, 10)),
+    paint,
+  );
+  group.add(shell);
 
-  // Upper body, narrower and shorter — the step between the two is the
-  // shoulder line that catches the light.
-  const body = new THREE.Mesh(new THREE.BoxGeometry(W * 0.94, 0.34, L * 0.86), paint);
-  body.position.y = 0.86;
-  body.castShadow = true;
-  group.add(body);
+  // The canopy: windscreen rake, roof, rear screen. Inset from the flanks so
+  // the body's shoulder line stays visible under it.
+  const canopy = new THREE.Mesh(
+    sweep([
+      { z: -0.95, w: 0.54, h: 0.05, y: 0.90, n: 3.0 },
+      { z: -0.55, w: 0.64, h: 0.16, y: 0.99, n: 3.8 },
+      { z: 0.0, w: 0.68, h: 0.23, y: 1.05, n: 4.4 },
+      { z: 0.6, w: 0.66, h: 0.21, y: 1.03, n: 4.4 },
+      { z: 1.05, w: 0.56, h: 0.12, y: 0.96, n: 3.6 },
+      { z: 1.3, w: 0.42, h: 0.05, y: 0.92, n: 2.8 },
+    ], ring(14, 9)),
+    glass,
+  );
+  group.add(canopy);
 
-  // Tapered nose: a wedge in front of the hull rather than a flat face.
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(W * 0.9, 0.3, 0.7), paint);
-  nose.position.set(0, 0.62, -half - 0.12);
-  nose.rotation.x = 0.12;
-  nose.castShadow = true;
-  group.add(nose);
-
-  // Cabin, raked and inset.
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(W * 0.78, 0.46, L * 0.4), glass);
-  cabin.position.set(0, 1.2, 0.18);
-  cabin.castShadow = true;
-  group.add(cabin);
-
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(W * 0.72, 0.1, L * 0.3), paint);
-  roof.position.set(0, 1.44, 0.22);
-  roof.castShadow = true;
+  // A painted roof panel capping the canopy, so the greenhouse reads as
+  // glazing with a roof over it rather than as one tinted bubble.
+  const roof = new THREE.Mesh(
+    sweep([
+      { z: -0.38, w: 0.55, h: 0.05, y: 1.23, n: 3.6 },
+      { z: 0.0, w: 0.60, h: 0.06, y: 1.26, n: 4.0 },
+      { z: 0.6, w: 0.58, h: 0.055, y: 1.23, n: 4.0 },
+      { z: 0.92, w: 0.48, h: 0.04, y: 1.17, n: 3.2 },
+    ], ring(12, 8)),
+    paint,
+  );
   group.add(roof);
 
-  // Rear spoiler.
-  const wing = new THREE.Mesh(new THREE.BoxGeometry(W * 0.86, 0.07, 0.34), trim);
-  wing.position.set(0, 1.16, half - 0.1);
-  wing.castShadow = true;
-  group.add(wing);
-  for (const x of [-W * 0.34, W * 0.34]) {
-    const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, 0.12), trim);
-    stalk.position.set(x, 1.06, half - 0.1);
+  // Splitter and diffuser: dark shapes closing off the body front and rear.
+  const splitter = new THREE.Mesh(
+    sweep([
+      { z: -HALF - 0.06, w: 0.62, h: 0.045, y: 0.44, n: 4 },
+      { z: -1.72, w: 0.76, h: 0.06, y: 0.44, n: 4 },
+    ], 8),
+    trim,
+  );
+  group.add(splitter);
+  const diffuser = new THREE.Mesh(
+    sweep([
+      { z: 1.76, w: 0.78, h: 0.07, y: 0.45, n: 4 },
+      { z: HALF + 0.04, w: 0.64, h: 0.05, y: 0.45, n: 4 },
+    ], 8),
+    trim,
+  );
+  group.add(diffuser);
+
+  // Mirrors. Small, and worth more than their triangle count: nothing else
+  // this cheap says "car" so immediately from behind or alongside.
+  for (const side of hero ? [-1, 1] : []) {
+    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.14, 6), trim);
+    stalk.position.set(side * 0.8, 0.96, -0.78);
+    stalk.rotation.z = -side * 0.7;
     group.add(stalk);
+    const shellMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 7, 5), paint);
+    shellMesh.scale.set(0.085, 0.055, 0.1);
+    shellMesh.position.set(side * 0.87, 1.0, -0.78);
+    group.add(shellMesh);
   }
 
-  // Wheels, with a rim face so they are not plain black cylinders, sunk into
-  // arches so the body sits over them rather than floating above.
-  const tyre = new THREE.CylinderGeometry(0.42, 0.42, 0.3, 18);
-  const rim = new THREE.CylinderGeometry(0.24, 0.24, 0.32, 12);
-  const tyreMat = new THREE.MeshStandardMaterial({ color: '#0e0f12', roughness: 0.9 });
-  const rimMat = new THREE.MeshStandardMaterial({ color: '#c9ced6', roughness: 0.3, metalness: 0.85 });
   const brakes = new THREE.MeshStandardMaterial({
     color: '#3a0d08', emissive: '#ff2d0a', emissiveIntensity: 0, roughness: 0.6,
   });
 
-  const wheels: THREE.Mesh[] = [];
-  for (const wx of [-W / 2 + 0.06, W / 2 - 0.06]) {
-    for (const wz of [-half + 0.9, half - 0.85]) {
-      const wheel = new THREE.Mesh(tyre, tyreMat);
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(wx, 0.42, wz);
-      wheel.castShadow = true;
-      const face = new THREE.Mesh(rim, rimMat);
-      face.rotation.z = Math.PI / 2;
-      wheel.add(face);
-      group.add(wheel);
-      wheels.push(wheel);
-
-      const arch = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.3, 1.06), trim);
-      arch.position.set(wx + (wx < 0 ? -0.02 : 0.02), 0.62, wz);
-      group.add(arch);
-    }
-  }
-
   // Lights. Emissive rather than real lights: a dozen point lights in frame
   // is the fastest way to lose a phone's frame rate.
   const headMat = new THREE.MeshStandardMaterial({
-    color: '#fffdf2', emissive: '#fff4cf', emissiveIntensity: 1.8, roughness: 0.15,
+    color: '#fffdf2', emissive: '#fff4cf', emissiveIntensity: 1.1, roughness: 0.12,
   });
-  for (const x of [-W * 0.32, W * 0.32]) {
-    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.1), headMat);
-    lamp.position.set(x, 0.72, -half - 0.3);
+  for (const side of [-1, 1]) {
+    // Wide, shallow slots set into the corners of the nose. Round lamps
+    // sitting side by side in the middle of a face read as a pair of eyes,
+    // which is the one thing a car front must not look like.
+    const lamp = new THREE.Mesh(
+      sweep([
+        { z: -1.93, w: 0.2, h: 0.03, y: 0.685, n: 5 },
+        { z: -1.74, w: 0.23, h: 0.038, y: 0.69, n: 5 },
+      ], 6),
+      headMat,
+    );
+    lamp.position.x = side * 0.3;
     group.add(lamp);
   }
 
-  const tailBar = new THREE.Mesh(new THREE.BoxGeometry(W * 0.82, 0.1, 0.08), brakes);
-  tailBar.position.set(0, 0.86, half + 0.02);
+  for (const side of [-1, 1]) {
+    const lamp = new THREE.Mesh(
+      sweep([
+        { z: 1.92, w: 0.22, h: 0.035, y: 0.72, n: 5 },
+        { z: HALF + 0.02, w: 0.2, h: 0.032, y: 0.72, n: 5 },
+      ], 6),
+      brakes,
+    );
+    lamp.position.x = side * 0.34;
+    group.add(lamp);
+  }
+  // A light bar joining them across the tail.
+  const tailBar = new THREE.Mesh(
+    sweep([
+      { z: 1.98, w: 0.46, h: 0.022, y: 0.78, n: 4 },
+      { z: HALF + 0.01, w: 0.44, h: 0.02, y: 0.78, n: 4 },
+    ], 6),
+    brakes,
+  );
   group.add(tailBar);
-  for (const x of [-W * 0.3, W * 0.3]) {
-    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.08), brakes);
-    lamp.position.set(x, 0.7, half + 0.02);
-    group.add(lamp);
-  }
 
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.14, 0.06), trim);
-  plate.position.set(0, 0.56, half + 0.03);
-  group.add(plate);
+  /*
+   * Bake the bodywork. None of it moves, and every panel would otherwise be
+   * its own draw call — on a road with a dozen cars in frame that is the
+   * difference that shows. The wheels are added afterwards because they turn.
+   *
+   * The merged paint mesh is what gets returned as `body`: Crossing recolours
+   * a car through `body.material`, and Drift through `paint` directly, and
+   * both have to land on the same material.
+   */
+  const baked = collapse(group, group.children.filter((child) => (child as THREE.Mesh).isMesh) as THREE.Mesh[]);
+  const shellMesh = baked.get(paint) ?? shell;
+
+  // Wheels: a tyre with a visibly separate sidewall, a rim face and a hub, so
+  // they read as wheels rather than as black discs.
+  const tyreGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.26, ring(16, 10));
+  const rimGeo = new THREE.CylinderGeometry(0.26, 0.26, 0.28, ring(12, 8));
+  const tyreMat = new THREE.MeshStandardMaterial({ color: '#0e0f12', roughness: 0.92 });
+
+  const wheels: THREE.Mesh[] = [];
+  for (const wx of [-0.79, 0.79]) {
+    for (const wz of [FRONT_AXLE, REAR_AXLE]) {
+      const wheel = new THREE.Mesh(tyreGeo, tyreMat);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(wx, 0.42, wz);
+      wheel.castShadow = true;
+      // Parented to the tyre, so it turns with it for free.
+      wheel.add(new THREE.Mesh(rimGeo, chrome));
+      group.add(wheel);
+      wheels.push(wheel);
+    }
+  }
 
   group.scale.setScalar(length / L);
 
-  return { group, body: hull, paint, wheels, brakes };
+  return { group, body: shellMesh, paint, wheels, brakes };
 }
 
 const TRUNK_MAT = new THREE.MeshStandardMaterial({ color: '#6f5237', roughness: 0.95 });

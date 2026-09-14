@@ -138,7 +138,11 @@ export function createCrossingScene(
     // Cars are turned side-on, so their width runs along the row's depth —
     // it has to stay inside one TILE. At canonical proportions that caps the
     // length near 2.4; 2.2 leaves a little air around it.
-    const car = buildCar('#ff6a1a', 2.2);
+    //
+    // Traffic detail: twenty of these at barely half scale, none of them the
+    // thing the player is looking at. The hero mesh here is frame time spent
+    // on sections nobody can resolve.
+    const car = buildCar('#ff6a1a', 2.2, 'traffic');
     car.group.visible = false;
     stage.scene.add(car.group);
     cars.push(car);

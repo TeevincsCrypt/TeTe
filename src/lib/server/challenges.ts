@@ -339,7 +339,7 @@ async function payWinner(
     } catch {
       /* The feed missing one entry costs nothing the payout itself did not already survive. */
     }
-    await creditLeaderboard(target.address, target.username, pot(challenge));
+    await creditLeaderboard(target.address, target.username, pot(challenge), 'challenge');
   }
   await maybeCreditReferral(challenge.host.address);
   if (challenge.guest) await maybeCreditReferral(challenge.guest.address);
