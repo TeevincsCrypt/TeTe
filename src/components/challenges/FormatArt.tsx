@@ -4,17 +4,25 @@ import type { ReactNode } from 'react';
 /**
  * Cover art for each challenge format.
  *
- * Two kinds, by necessity. CODM, PUBG and Free Fire stay original
- * illustrations: every reference photo offered for these turned out to be a
- * specific character illustration lifted from that game's own promotional
- * art — a copyright the publisher holds on the drawing itself, which taking
- * the logo or wordmark off does not clear — so each mark below evokes the
- * *genre* instead. Chess, Trivia, eFootball and Custom are real photos: each
- * one checked directly and found to be generic — a stock chess set, a
- * marquee sign, a stadium crowd with no players or branding in frame, a
- * plain typographic graphic — nothing tying it to a specific owned work.
+ * Every image here evokes a *genre*, never a specific owned work. That rule
+ * exists because earlier reference photos offered for CODM, PUBG and Free
+ * Fire turned out to be character illustrations lifted from those games' own
+ * promotional art — a copyright the publisher holds on the drawing itself,
+ * which cropping the logo out does not clear. The art now in place for those
+ * three is generic instead: unbranded tactical figures and a stylised comic
+ * soldier that belong to no particular title. The rest are equally generic —
+ * a stock chess set, a marquee sign, a stadium crowd with no players or
+ * branding in frame, an arcade floor, a plain typographic graphic.
+ *
+ * The SVG marks below remain the fallback for any format without a photo, and
+ * are the reason a missing image degrades to something deliberate rather than
+ * to a blank box.
  */
 const PHOTO: Partial<Record<string, string>> = {
+  codm: '/format-art/codm.jpg',
+  pubg: '/format-art/pubg.jpg',
+  freefire: '/format-art/freefire.jpg',
+  arcade: '/format-art/arcade.jpg',
   chess: '/format-art/chess.jpg',
   trivia: '/format-art/trivia.jpg',
   efootball: '/format-art/efootball.jpg',
@@ -126,7 +134,10 @@ export function FormatArt({
   if (photo) {
     return (
       <span className={`relative block overflow-hidden ${rounded} ${className ?? ''}`}>
-        <Image src={photo} alt="" fill sizes="240px" className="object-cover" />
+        {/* One size hint for every usage, from a 48px thumbnail to a
+            full-width banner: they then all resolve to the same srcset entry,
+            so the whole app downloads each cover once and reuses it. */}
+        <Image src={photo} alt="" fill sizes="480px" className="object-cover" />
       </span>
     );
   }

@@ -2,21 +2,27 @@
 
 import { useRef } from 'react';
 
+import {
+  COLS,
+  createCrossingScene,
+  disposeCrossingScene,
+  updateCrossingScene,
+  type CrossingCar,
+  type CrossingLane,
+  type CrossingPickup,
+  type CrossingScene,
+} from '@/lib/arcade/crossing3d';
 import { sfxCoin, sfxHazard, sfxJump } from '@/lib/arcade/sfx';
 import { useCharacter } from '@/state/use-character';
 
-import { GameCanvas, type Frame } from './GameCanvas';
-import { drawCar, drawCoin, drawHazard, drawRunner, drawTrain } from './sprites';
+import { Game3D, Hud, type Frame3D } from './Game3D';
 
 const LANE = 46;
-const COLS = 7;
 
-interface Car { lane: number; x: number; speed: number; w: number; kind: 'car' | 'train'; body: string }
-interface Pickup { lane: number; col: number; kind: 'coin' | 'hazard'; taken: boolean }
 interface State {
   row: number; col: number; over: boolean; scroll: number;
-  lanes: { kind: 'road' | 'safe'; seed: number }[];
-  cars: Car[]; pickups: Pickup[]; coins: number; hazards: number; flash: number;
+  lanes: CrossingLane[];
+  cars: CrossingCar[]; pickups: CrossingPickup[]; coins: number; hazards: number; flash: number;
   hop: number; best: number; started: boolean;
 }
 
@@ -31,6 +37,10 @@ interface State {
  * NIM, clipping a caltrop costs more than a coin earns. That turns the safe
  * column into a real choice rather than the obvious line, since the coin is
  * rarely on it.
+ *
+ * The board is real geometry under an angled camera now, but the game is the
+ * same grid it always was — rows, columns, and traffic measured in the same
+ * units the collision checks use.
  */
 export function CrossingGame({
   onFinish,
@@ -38,11 +48,18 @@ export function CrossingGame({
   onFinish: (score: number, coins: number, hazards: number) => void;
 }) {
   const { character } = useCharacter();
+  const skin = useRef({ body: character.body, accent: character.accent });
+  skin.current = { body: character.body, accent: character.accent };
+
   const state = useRef<State>({
     row: 0, col: 3, over: false, scroll: 0, lanes: [], cars: [], pickups: [], coins: 0, hazards: 0, flash: 0,
     hop: 0, best: 0, started: false,
   });
   const done = useRef(false);
+
+  const scoreRef = useRef<HTMLDivElement | null>(null);
+  const tallyRef = useRef<HTMLDivElement | null>(null);
+  const hintRef = useRef<HTMLDivElement | null>(null);
 
   function ensureLanes(upTo: number) {
     const s = state.current;
@@ -96,19 +113,14 @@ export function CrossingGame({
     ensureLanes(0);
   }
 
-  function frame({ ctx, dt, width, height, pointer }: Frame) {
+  function frame({ handle, dt, width, pointer }: Frame3D<CrossingScene>) {
     const s = state.current;
     if (!s.started) reset();
 
-    const boardW = COLS * LANE;
-    const ox = (width - boardW) / 2;
-    const baseY = height - 110;
-
     // ---- input: tap the sides to shuffle across, anywhere else to hop -----
     if (pointer.pressed && !s.over) {
-      const rel = pointer.x - ox;
-      if (rel < boardW * 0.28) s.col = Math.max(0, s.col - 1);
-      else if (rel > boardW * 0.72) s.col = Math.min(COLS - 1, s.col + 1);
+      if (pointer.x < width * 0.28) s.col = Math.max(0, s.col - 1);
+      else if (pointer.x > width * 0.72) s.col = Math.min(COLS - 1, s.col + 1);
       else {
         s.row += 1;
         s.hop = 1;
@@ -138,6 +150,7 @@ export function CrossingGame({
 
     // ---- traffic ----------------------------------------------------------
     if (!s.over) {
+      const boardW = COLS * LANE;
       for (const car of s.cars) {
         car.x += car.speed * dt;
         if (car.speed > 0 && car.x > boardW + 60) car.x = -60;
@@ -157,75 +170,35 @@ export function CrossingGame({
       }
     }
 
-    // ---- draw -------------------------------------------------------------
-    ctx.clearRect(0, 0, width, height);
+    updateCrossingScene(handle, s);
 
-    for (let i = Math.max(0, s.row - 3); i < s.row + 10; i += 1) {
-      const lane = s.lanes[i];
-      if (!lane) continue;
-      const y = baseY - (i * LANE - s.scroll);
-      if (y < -LANE || y > height + LANE) continue;
-
-      ctx.fillStyle = lane.kind === 'road' ? '#2a211b' : i % 2 ? '#efe7de' : '#e7ded3';
-      ctx.fillRect(ox, y - LANE, boardW, LANE);
-
-      if (lane.kind === 'road') {
-        ctx.strokeStyle = 'rgba(255,255,255,0.28)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([12, 12]);
-        ctx.beginPath();
-        ctx.moveTo(ox, y - LANE / 2);
-        ctx.lineTo(ox + boardW, y - LANE / 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
+    if (scoreRef.current) scoreRef.current.textContent = String(s.row);
+    if (tallyRef.current) {
+      tallyRef.current.textContent = String(s.coins - s.hazards);
+      tallyRef.current.style.color = s.flash > 0.05 ? '#4ade80' : s.flash < -0.05 ? '#ff6b6b' : '#ffffff';
     }
-
-    // Pickups sit under the traffic, so a car never hides behind a coin.
-    for (const pickup of s.pickups) {
-      if (pickup.taken) continue;
-      const y = baseY - (pickup.lane * LANE - s.scroll) - LANE / 2;
-      if (y < -LANE || y > height + LANE) continue;
-      const x = ox + pickup.col * LANE + LANE / 2;
-      if (pickup.kind === 'coin') drawCoin(ctx, x, y, 13, performance.now() / 260 + pickup.lane);
-      else drawHazard(ctx, x, y, 13);
+    if (hintRef.current) {
+      hintRef.current.textContent = s.over
+        ? 'TAP TO RESTART'
+        : 'TAP SIDES TO MOVE · TAP MIDDLE TO HOP';
     }
-
-    for (const car of s.cars) {
-      const y = baseY - (car.lane * LANE - s.scroll) - LANE / 2;
-      if (y < -LANE || y > height + LANE) continue;
-      if (car.kind === 'train') drawTrain(ctx, ox + car.x, y, car.w, car.speed > 0);
-      else drawCar(ctx, ox + car.x, y, car.w, car.speed > 0, car.body);
-    }
-
-    const px = ox + s.col * LANE + LANE / 2;
-    const py = baseY - LANE / 2;
-    drawRunner(ctx, px, py, 1, s.hop, character.body, character.accent);
-
-    ctx.fillStyle = '#17120e';
-    ctx.font = '900 34px Archivo, system-ui, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(String(s.row), 16, 42);
-
-    // Coin tally, tinted briefly green or red as one is gained or lost.
-    drawCoin(ctx, width - 74, 32, 12);
-    ctx.textAlign = 'left';
-    ctx.font = '900 24px Archivo, system-ui, sans-serif';
-    ctx.fillStyle = s.flash > 0.05 ? '#15803d' : s.flash < -0.05 ? '#b91c1c' : '#17120e';
-    ctx.fillText(String(s.coins - s.hazards), width - 56, 41);
-
-    ctx.font = '700 11px Archivo, system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(23,18,14,0.5)';
-    ctx.fillText(s.over ? 'TAP TO RESTART' : 'TAP SIDES TO MOVE · TAP MIDDLE TO HOP', 16, height - 14);
   }
 
   return (
-    <GameCanvas
-      running
-      onFrame={frame}
+    <Game3D<CrossingScene>
       ariaLabel="Crossing game board"
-      className="h-[62vh] max-h-[520px] w-full rounded-[1.25rem] bg-[#f6f0e8]"
+      className="h-[62vh] max-h-[520px] bg-[#bfd8e6]"
+      setup={(canvas) => createCrossingScene(canvas, skin.current.body, skin.current.accent)}
+      onFrame={frame}
+      onDispose={disposeCrossingScene}
+      hud={
+        <Hud
+          scoreRef={scoreRef}
+          tallyRef={tallyRef}
+          hintRef={hintRef}
+          hint="TAP SIDES TO MOVE · TAP MIDDLE TO HOP"
+        />
+      }
     />
   );
 }
-

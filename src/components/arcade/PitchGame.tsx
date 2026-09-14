@@ -2,13 +2,17 @@
 
 import { useRef } from 'react';
 
+import {
+  createPitchScene,
+  disposePitchScene,
+  updatePitchScene,
+  type PitchPickup,
+  type PitchScene,
+  type PitchWall,
+} from '@/lib/arcade/pitch3d';
 import { sfxCoin, sfxGoal, sfxHazard } from '@/lib/arcade/sfx';
 
-import { GameCanvas, type Frame } from './GameCanvas';
-import { drawBall, drawCoin, drawFootballer, drawHazard } from './sprites';
-
-interface Wall { x: number; y: number; drift: number }
-interface Pickup { x: number; y: number; kind: 'coin' | 'hazard'; taken: boolean }
+import { Game3D, type Frame3D } from './Game3D';
 
 interface State {
   started: boolean; over: boolean;
@@ -17,8 +21,8 @@ interface State {
   /** Sideways acceleration applied while the ball is travelling — the curl. */
   curl: number; spin: number; live: boolean;
   aiming: boolean; aimX: number; aimY: number;
-  wall: Wall[]; keeperX: number; keeperDir: number; keeperSpeed: number;
-  pickups: Pickup[];
+  wall: PitchWall[]; keeperX: number; keeperDir: number; keeperSpeed: number;
+  pickups: PitchPickup[];
   goals: number; attempts: number; coins: number; hazards: number;
   flash: number; message: string; messageAt: number;
 }
@@ -33,9 +37,9 @@ const START: Omit<State, 'started'> = {
 };
 
 /**
- * Pitch — top-down free kicks where the ball bends hard.
+ * Pitch — free kicks where the ball bends hard.
  *
- * An original game in the top-down football genre, built around that genre's
+ * An original game in the free-kick genre, built around that genre's
  * signature: heavy curl. Drag back from the ball and let go — the direction
  * sets the aim, the length sets the power, and the sideways component of the
  * drag sets how much the ball bends in flight. A straight shot has no chance
@@ -43,6 +47,10 @@ const START: Omit<State, 'started'> = {
  *
  * Ten shots per round. Coins sit on the pitch and are collected by the ball as
  * it travels, which usually means choosing a line that is worse for scoring.
+ *
+ * The ball still moves in the same plane it always did — the camera simply
+ * stands behind it now instead of above, which is the view that makes a
+ * bending shot legible.
  */
 export function PitchGame({
   onFinish,
@@ -51,6 +59,12 @@ export function PitchGame({
 }) {
   const state = useRef<State>({ ...START, started: false });
   const done = useRef(false);
+
+  const scoreRef = useRef<HTMLDivElement | null>(null);
+  const shotRef = useRef<HTMLDivElement | null>(null);
+  const tallyRef = useRef<HTMLDivElement | null>(null);
+  const messageRef = useRef<HTMLDivElement | null>(null);
+  const hintRef = useRef<HTMLDivElement | null>(null);
 
   function layout(width: number, height: number) {
     const goalW = Math.min(190, width * 0.56);
@@ -117,7 +131,7 @@ export function PitchGame({
     }
   }
 
-  function frame({ ctx, dt, width, height, pointer }: Frame) {
+  function frame({ handle, dt, width, height, pointer }: Frame3D<PitchScene>) {
     const s = state.current;
     if (!s.started) reset(width, height);
 
@@ -126,6 +140,11 @@ export function PitchGame({
     if (pointer.pressed && s.over && done.current) {
       reset(width, height);
       return;
+    }
+
+    function nextShot() {
+      if (s.attempts >= SHOTS) finish();
+      else setPiece(width, height);
     }
 
     // ---- aiming: drag back from the ball, release to strike ---------------
@@ -225,141 +244,86 @@ export function PitchGame({
       }
     }
 
-    function nextShot() {
-      if (s.attempts >= SHOTS) finish();
-      else setPiece(width, height);
-    }
-
     s.flash *= Math.max(0, 1 - dt * 2.2);
 
-    // ---- draw --------------------------------------------------------------
-    ctx.clearRect(0, 0, width, height);
-
-    // Mown stripes, so the pitch reads as a pitch and gives depth cues.
-    for (let i = 0; i < 12; i += 1) {
-      ctx.fillStyle = i % 2 ? '#2f7d3c' : '#2a7136';
-      ctx.fillRect(0, (i * height) / 12, width, height / 12 + 1);
-    }
-
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(10, 10, width - 20, height - 20);
-
-    // Six-yard box and penalty arc.
-    const boxW = Math.min(280, width * 0.8);
-    ctx.strokeRect((width - boxW) / 2, 10, boxW, 96);
-    ctx.beginPath();
-    ctx.arc(width / 2, 106, 52, 0, Math.PI);
-    ctx.stroke();
-
-    // Goal frame and net.
-    ctx.fillStyle = 'rgba(255,255,255,0.14)';
-    ctx.fillRect(goalX, goalY - 34, goalW, 34);
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 10; i += 1) {
-      ctx.beginPath();
-      ctx.moveTo(goalX + (i / 10) * goalW, goalY - 34);
-      ctx.lineTo(goalX + (i / 10) * goalW, goalY);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(goalX, goalY);
-    ctx.lineTo(goalX, goalY - 34);
-    ctx.lineTo(goalX + goalW, goalY - 34);
-    ctx.lineTo(goalX + goalW, goalY);
-    ctx.stroke();
-
-    for (const pickup of s.pickups) {
-      if (pickup.taken) continue;
-      if (pickup.kind === 'coin') drawCoin(ctx, pickup.x, pickup.y, 12, performance.now() / 240);
-      else drawHazard(ctx, pickup.x, pickup.y, 12);
-    }
-
-    for (const defender of s.wall) {
-      drawFootballer(ctx, defender.x, defender.y, 17, '#e8e4dd', '#20313d');
-    }
-    drawFootballer(ctx, goalX + s.keeperX * goalW, keeperY, 18, '#f5c542', '#17120e');
-
-    // The aim line, with the predicted bend drawn in — the curl has to be
-    // visible before the shot or it is guesswork rather than a skill.
-    if (s.aiming) {
-      const dx = s.bx - s.aimX;
-      const dy = s.by - s.aimY;
-      const power = Math.min(1, Math.hypot(dx, dy) / 150);
-      const angle = Math.atan2(dy, dx);
-      const speed = 250 + power * 520;
-      let px = s.bx;
-      let py = s.by;
-      let pvx = Math.cos(angle) * speed;
-      let pvy = Math.sin(angle) * speed;
-      const pcurl = (dx / Math.max(40, Math.abs(dy))) * -520;
-
-      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
-      ctx.lineWidth = 2.5;
-      ctx.setLineDash([7, 7]);
-      ctx.beginPath();
-      ctx.moveTo(px, py);
-      for (let i = 0; i < 26; i += 1) {
-        pvx += pcurl * 0.035;
-        const drag = Math.pow(0.35, 0.035);
-        pvx *= drag;
-        pvy *= drag;
-        px += pvx * 0.035;
-        py += pvy * 0.035;
-        ctx.lineTo(px, py);
-      }
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.beginPath();
-      ctx.arc(px, py, 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    drawBall(ctx, s.bx, s.by, 9, s.spin);
-
-    // ---- hud ---------------------------------------------------------------
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 34px Archivo, system-ui, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(String(s.goals), 16, 42);
-    ctx.font = '700 11px Archivo, system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillText(`SHOT ${Math.min(s.attempts + 1, SHOTS)} OF ${SHOTS}`, 16, 58);
-
-    drawCoin(ctx, width - 74, 32, 12);
-    ctx.font = '900 24px Archivo, system-ui, sans-serif';
-    ctx.fillStyle = s.flash > 0.05 ? '#4ade80' : s.flash < -0.05 ? '#ff6b6b' : '#ffffff';
-    ctx.fillText(String(s.coins - s.hazards), width - 56, 41);
-
-    const age = (performance.now() - s.messageAt) / 1000;
-    if (s.message && age < 1.3) {
-      ctx.textAlign = 'center';
-      ctx.font = '900 30px Archivo, system-ui, sans-serif';
-      ctx.fillStyle = s.message === 'GOAL' ? '#c8ff4d' : 'rgba(255,255,255,0.9)';
-      ctx.fillText(s.message, width / 2, height / 2);
-    }
-
-    ctx.textAlign = 'left';
-    ctx.font = '700 11px Archivo, system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText(
-      s.over ? 'TAP TO PLAY AGAIN' : 'DRAG BACK AND RELEASE · PULL WIDE TO BEND IT',
-      16,
-      height - 14,
+    updatePitchScene(
+      handle,
+      { ...s, layout: { goalW, goalX, goalY, keeperY } },
+      width,
+      height,
     );
+
+    if (scoreRef.current) scoreRef.current.textContent = String(s.goals);
+    if (shotRef.current) {
+      shotRef.current.textContent = `SHOT ${Math.min(s.attempts + 1, SHOTS)} OF ${SHOTS}`;
+    }
+    if (tallyRef.current) {
+      tallyRef.current.textContent = String(s.coins - s.hazards);
+      tallyRef.current.style.color = s.flash > 0.05 ? '#4ade80' : s.flash < -0.05 ? '#ff6b6b' : '#ffffff';
+    }
+    if (messageRef.current) {
+      const age = (performance.now() - s.messageAt) / 1000;
+      const show = Boolean(s.message) && age < 1.3;
+      messageRef.current.style.opacity = show ? '1' : '0';
+      if (show) {
+        messageRef.current.textContent = s.message;
+        messageRef.current.style.color = s.message === 'GOAL' ? '#c8ff4d' : 'rgba(255,255,255,0.9)';
+      }
+    }
+    if (hintRef.current) {
+      hintRef.current.textContent = s.over
+        ? 'TAP TO RESTART'
+        : 'DRAG BACK FROM THE BALL · RELEASE TO STRIKE';
+    }
   }
 
   return (
-    <GameCanvas
-      running
-      onFrame={frame}
+    <Game3D<PitchScene>
       ariaLabel="Pitch game board"
-      className="h-[62vh] max-h-[520px] w-full rounded-[1.25rem] bg-[#2a7136]"
+      className="h-[62vh] max-h-[520px] bg-[#101a24]"
+      setup={(canvas) => createPitchScene(canvas)}
+      onFrame={frame}
+      onDispose={disposePitchScene}
+      hud={
+        <>
+          <div className="absolute left-3 top-3 rounded-lg bg-black/25 px-2.5 py-1">
+            <div
+              ref={scoreRef}
+              className="text-[1.9rem] font-black leading-none text-white drop-shadow"
+              style={{ fontFamily: 'Archivo, system-ui, sans-serif' }}
+            >
+              0
+            </div>
+            <div ref={shotRef} className="mt-0.5 text-[0.58rem] font-bold tracking-[0.14em] text-white/60">
+              SHOT 1 OF {SHOTS}
+            </div>
+          </div>
+
+          <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-lg bg-black/25 px-2.5 py-1.5">
+            <span className="size-3 rounded-full bg-[#f2c14e] shadow-[inset_-1px_-1px_2px_rgba(0,0,0,0.35)]" />
+            <div
+              ref={tallyRef}
+              className="text-[1.3rem] font-black leading-none text-white"
+              style={{ fontFamily: 'Archivo, system-ui, sans-serif' }}
+            >
+              0
+            </div>
+          </div>
+
+          <div
+            ref={messageRef}
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[1.7rem] font-black opacity-0 transition-opacity duration-200 drop-shadow"
+            style={{ fontFamily: 'Archivo, system-ui, sans-serif' }}
+          />
+
+          <div
+            ref={hintRef}
+            className="absolute bottom-3 left-3 rounded-md bg-black/25 px-2 py-1 text-[0.68rem] font-bold tracking-wide text-white/90"
+          >
+            DRAG BACK FROM THE BALL · RELEASE TO STRIKE
+          </div>
+        </>
+      }
     />
   );
 }
