@@ -257,6 +257,30 @@ export function noiseTexture(
   return texture;
 }
 
+/** A spotted pelt: blots of one colour over another, tiled. */
+export function peltTexture(base: string, spot: string): THREE.CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = spot;
+  for (let i = 0; i < 34; i += 1) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 4 + Math.random() * 6;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * (0.6 + Math.random() * 0.5), Math.random() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  return texture;
+}
+
 /**
  * A soft contact shadow to sit under a hero object.
  *
@@ -393,13 +417,36 @@ export function buildCharacter(look: Look): Character {
     scarf,
     hair = 'short',
     bulk = 1,
+    glow,
+    mask,
+    prosthetic,
+    feline,
+    tail: wantsTail,
+    spots,
   } = look;
 
   const group = new THREE.Group();
 
-  const skin = new THREE.MeshStandardMaterial({ color: '#c98e63', roughness: 0.8 });
-  const body = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.05 });
+  const skin = new THREE.MeshStandardMaterial({
+    color: feline ? color : '#c98e63',
+    roughness: 0.8,
+    map: spots ? peltTexture(color, spots) : null,
+  });
+  const body = new THREE.MeshStandardMaterial({
+    color,
+    roughness: spots ? 0.9 : 0.6,
+    metalness: spots ? 0 : 0.05,
+    map: spots ? peltTexture(color, spots) : null,
+  });
   const trim = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.7 });
+  const lit = glow
+    ? new THREE.MeshStandardMaterial({
+        color: glow, emissive: glow, emissiveIntensity: 1.5, roughness: 0.3,
+      })
+    : null;
+  const steel = new THREE.MeshStandardMaterial({
+    color: '#aeb6c0', roughness: 0.3, metalness: 0.85,
+  });
 
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46 * bulk, 0.56, 0.26 * bulk), body);
   torso.position.y = 1.02;
@@ -501,6 +548,70 @@ export function buildCharacter(look: Look): Character {
     group.add(tail);
   }
 
+  if (mask) {
+    const cover = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.22), trim);
+    cover.position.set(0, 1.38, -0.12);
+    group.add(cover);
+    // The hose loops down to the chest rig, which is most of what reads as
+    // a breather rather than a scarf.
+    const hose = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.34, 6), trim);
+    hose.position.set(0.14, 1.2, -0.12);
+    hose.rotation.z = 0.35;
+    group.add(hose);
+  }
+
+  if (feline) {
+    const muzzle = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.14, 0.16), skin);
+    muzzle.position.set(0, 1.4, -0.2);
+    group.add(muzzle);
+    const nose = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.06, 0.05),
+      new THREE.MeshStandardMaterial({ color: '#2b1d14', roughness: 0.6 }),
+    );
+    nose.position.set(0, 1.42, -0.29);
+    group.add(nose);
+    for (const side of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.18, 4), skin);
+      ear.position.set(side * 0.11, 1.68, 0.02);
+      group.add(ear);
+    }
+  }
+
+  if (wantsTail) {
+    // Three tapering segments, each angled a little more, so it curves away
+    // from the hips instead of sticking out like a rod.
+    let y = 0.82;
+    let z = 0.18;
+    for (let i = 0; i < 3; i += 1) {
+      const seg = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07 - i * 0.015, 0.09 - i * 0.015, 0.34, 6),
+        skin,
+      );
+      seg.position.set(0, y, z);
+      seg.rotation.x = -0.7 - i * 0.35;
+      group.add(seg);
+      y += 0.18 - i * 0.05;
+      z += 0.2 + i * 0.04;
+    }
+  }
+
+  if (lit) {
+    // Chest and shoulder circuitry. Thin strips rather than glowing panels:
+    // the point is a line of light tracing the body, not a lamp.
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.34, 0.02), lit);
+    chest.position.set(0, 1.04, -0.14 * bulk);
+    group.add(chest);
+    for (const side of [-1, 1]) {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.2, 0.02), lit);
+      rib.position.set(side * 0.15 * bulk, 1.14, -0.14 * bulk);
+      rib.rotation.z = side * 0.6;
+      group.add(rib);
+    }
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.4 * bulk, 0.04, 0.02), lit);
+    belt.position.set(0, 0.79, -0.14 * bulk);
+    group.add(belt);
+  }
+
   const limb = (material: THREE.Material, w: number, h: number, at: [number, number, number]) => {
     const pivot = new THREE.Group();
     pivot.position.set(at[0], at[1], at[2]);
@@ -517,8 +628,24 @@ export function buildCharacter(look: Look): Character {
   const shoulder = 0.23 * bulk + 0.08;
   const armL = limb(body, arm, 0.5, [-shoulder, 1.24, 0]);
   const armR = limb(body, arm, 0.5, [shoulder, 1.24, 0]);
-  const legL = limb(trim, leg, 0.64, [-0.12, 0.68, 0]);
-  const legR = limb(trim, leg, 0.64, [0.12, 0.68, 0]);
+  // A prosthetic leg is a short thigh with a blade below it, so the thigh
+  // itself is cut back to leave room for the blade to read.
+  const thigh = prosthetic ? 0.3 : 0.64;
+  const legL = limb(trim, leg, thigh, [-0.12, 0.68, 0]);
+  const legR = limb(trim, leg, thigh, [0.12, 0.68, 0]);
+
+  if (prosthetic) {
+    // Parented to the pivot so the blade swings with the leg, not the hip.
+    for (const pivot of [legL, legR]) {
+      const shin = new THREE.Mesh(new THREE.BoxGeometry(leg * 0.8, 0.4, leg * 0.8), steel);
+      shin.position.set(0, -0.5, 0);
+      pivot.add(shin);
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(leg * 0.7, 0.3, 0.1), steel);
+      blade.position.set(0, -0.82, 0.1);
+      blade.rotation.x = 0.6;
+      pivot.add(blade);
+    }
+  }
 
   group.traverse((object) => {
     if ((object as THREE.Mesh).isMesh) object.castShadow = true;

@@ -14,13 +14,12 @@ import type { Character } from '@/lib/arcade/characters';
  * changed in characters.ts cannot leave its picker mark behind.
  */
 function CharacterMark({ look, className }: { look: Character; className?: string }) {
-  const { helmet = 'none', visor, cape, scarf, hair = 'short', accent } = look;
+  const { helmet = 'none', visor, cape, scarf, hair = 'short', accent, glow, mask, feline, tail, spots } = look;
 
   return (
     <svg viewBox="0 0 32 32" className={className} aria-hidden fill="none">
-      {cape && (
-        <path d="M6 32c0-7 3-11 10-11s10 4 10 11Z" fill={accent} opacity="0.55" />
-      )}
+      {cape && <path d="M6 32c0-7 3-11 10-11s10 4 10 11Z" fill={accent} opacity="0.55" />}
+      {tail && <path d="M24 32c4-3 5-8 3-12l-2.6 1.4c1.4 3 0.8 7-2.4 9.6Z" fill={accent} />}
 
       {/* Shoulders, widened for a heavy build so bulk reads here too. */}
       <path
@@ -31,19 +30,36 @@ function CharacterMark({ look, className }: { look: Character; className?: strin
         }
         fill="currentColor"
       />
+      {spots && (
+        <>
+          <circle cx="12" cy="28" r="1.5" fill={spots} opacity="0.75" />
+          <circle cx="20" cy="27" r="1.7" fill={spots} opacity="0.75" />
+          <circle cx="16" cy="30.5" r="1.3" fill={spots} opacity="0.75" />
+        </>
+      )}
+      {glow && (
+        <>
+          <rect x="15.2" y="23" width="1.6" height="7" rx="0.8" fill={glow} />
+          <rect x="10.5" y="25" width="1.3" height="4" rx="0.65" fill={glow} transform="rotate(20 11 27)" />
+          <rect x="20.2" y="25" width="1.3" height="4" rx="0.65" fill={glow} transform="rotate(-20 21 27)" />
+        </>
+      )}
 
       {scarf && <rect x="11" y="20" width="10" height="3.4" rx="1.6" fill={accent} />}
-
-      {hair === 'ponytail' && (
-        <path d="M21 10c4 1 5 5 3.5 8.5L22 17Z" fill={accent} />
-      )}
+      {hair === 'ponytail' && <path d="M21 10c4 1 5 5 3.5 8.5L22 17Z" fill={accent} />}
 
       {/* Head */}
       <circle cx="16" cy="13" r="6.4" fill="currentColor" />
 
-      {hair === 'short' && (
-        <path d="M9.6 11.2a6.4 6.4 0 0 1 12.8 0Z" fill={accent} />
+      {feline && (
+        <>
+          <path d="M9.5 7.5 10.8 11.4 7.4 11Z" fill="currentColor" />
+          <path d="M22.5 7.5 21.2 11.4 24.6 11Z" fill="currentColor" />
+          <ellipse cx="16" cy="15.6" rx="2.6" ry="2" fill={accent} opacity="0.85" />
+        </>
       )}
+      {hair === 'short' && !feline && <path d="M9.6 11.2a6.4 6.4 0 0 1 12.8 0Z" fill={accent} />}
+      {mask && <rect x="11.6" y="14.4" width="8.8" height="4" rx="1.6" fill={accent} />}
 
       {helmet === 'cap' && (
         <>

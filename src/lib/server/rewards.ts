@@ -18,13 +18,14 @@ import { get, set } from './store';
  *   - score and coins are sanity-bounded, which rejects garbage and overflow
  *     rather than skilled play (a real run never comes close to these)
  *   - submissions are throttled per address, so nobody out-paces a real round
- *   - a rolling daily total per address caps what one address can ever draw
+ *   - a hard per-round ceiling caps what any single report can ever be worth
  *
- * The daily cap is the load-bearing one, and it has a known limit worth being
- * plain about: Nimiq addresses are free to generate, so a determined farmer
- * can run many addresses in parallel and the per-address cap does not stop
- * them. Closing that needs something this app does not have yet — a funded
- * wallet, a deposit, or an identity requirement before earning.
+ * Earning itself is uncapped per day: a player who keeps playing keeps
+ * earning. The per-round ceiling is therefore the whole story here, because
+ * it is what makes unverified reports survivable — the worst a crafted one can
+ * do is pay an ordinary round, so accumulating anything meaningful costs real
+ * time against the cooldown. What leaves the treasury in a day is bounded
+ * separately, at the withdrawal — see lib/wallet/withdrawal.
  */
 const RATE_LUNA: Record<GameId, number> = {
   crossing: 500, // 0.005 NIM per row
@@ -81,18 +82,6 @@ const MAX_ROUND_LUNA = 100_000; // 1 NIM
 /** The daily check-in. Flat, not scaled by streak — the pool is finite. */
 const CHECK_IN_LUNA = 50_000; // 0.5 NIM
 
-/**
- * Ceiling on total credited to one address per UTC day.
- *
- * Was 200 NIM, which is what the treasury was drained 200 NIM at a time
- * against — twenty payouts of exactly this figure, sixteen of them inside a
- * single minute to sixteen freshly-made addresses. Addresses are free, so this
- * cap is the price of one address per day to a farmer, and it has to be set
- * low enough that farming is not worth the trouble while a real player can
- * still clear the withdrawal minimum in a sitting.
- */
-const MAX_DAILY_LUNA = 2_500_000; // 25 NIM
-
 /** Minimum real time between credited plays from the same address. */
 const COOLDOWN_MS = 15_000;
 
@@ -108,8 +97,15 @@ export type RewardResult =
 /** The ledger the withdraw route pays out from. Shared so they cannot drift. */
 export const rewardsBalanceKey = (address: string) => `rewards:${compactAddress(address)}`;
 const lastKey = (address: string) => `rewards:last:${compactAddress(address)}`;
+/**
+ * What this address earned today. Kept as an operational record only — it
+ * gated earning when there was a daily earning cap, and nothing reads it for
+ * a decision now that there is not.
+ */
 const dailyKey = (address: string) => `rewards:daily:${compactAddress(address)}`;
 const streakKey = (address: string) => `rewards:streak:${compactAddress(address)}`;
+/** What has left the treasury to this address today, as a DailyTotal. */
+const withdrawnKey = (address: string) => `rewards:withdrawn:${compactAddress(address)}`;
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -117,6 +113,31 @@ function today(): string {
 
 function yesterday(): string {
   return new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * What this address has already taken out of the treasury today.
+ *
+ * Separate from `dailyKey`, which counts what was *earned*. Earning is
+ * uncapped; leaving is not, and conflating the two would mean a day of play
+ * spent the day's withdrawal allowance without a single NIM having moved.
+ */
+export async function withdrawnToday(address: string): Promise<number> {
+  const stored = await get<DailyTotal>(withdrawnKey(address));
+  return stored?.date === today() ? stored.luna : 0;
+}
+
+/**
+ * Move this address's withdrawn-today total by `luna`.
+ *
+ * Positive to book a payout, negative to give the allowance back when one
+ * fails. Clamped at zero so a double rollback can never hand out extra
+ * allowance, and stamped with today's date on every write so a stale record
+ * from a previous day is replaced rather than added to.
+ */
+export async function noteWithdrawal(address: string, luna: number): Promise<void> {
+  const already = await withdrawnToday(address);
+  await set(withdrawnKey(address), { date: today(), luna: Math.max(0, already + luna) });
 }
 
 export async function creditGameReward(
@@ -143,14 +164,11 @@ export async function creditGameReward(
 
   const stored = await get<DailyTotal>(dailyKey(address));
   const day: DailyTotal = stored?.date === today() ? stored : { date: today(), luna: 0 };
-  if (day.luna >= MAX_DAILY_LUNA) {
-    return { ok: false, error: "Today's reward limit is reached. Come back tomorrow." };
-  }
 
   // Hazards can take a round below zero; that costs the round, never the
   // balance already earned.
   const earned = Math.max(0, Math.round(score * RATE_LUNA[gameId]) + coins * COIN_LUNA - hazards * HAZARD_LUNA);
-  const credited = Math.min(earned, MAX_ROUND_LUNA, MAX_DAILY_LUNA - day.luna);
+  const credited = Math.min(earned, MAX_ROUND_LUNA);
 
   const current = (await get<number>(rewardsBalanceKey(address))) ?? 0;
   const balance = current + credited;
@@ -196,11 +214,8 @@ export async function claimStreakReward(address: string): Promise<StreakResult> 
 
   const storedDay = await get<DailyTotal>(dailyKey(address));
   const day: DailyTotal = storedDay?.date === today() ? storedDay : { date: today(), luna: 0 };
-  if (day.luna >= MAX_DAILY_LUNA) {
-    return { ok: false, error: "Today's reward limit is reached. Come back tomorrow." };
-  }
 
-  const credited = Math.min(CHECK_IN_LUNA, MAX_DAILY_LUNA - day.luna);
+  const credited = CHECK_IN_LUNA;
   const current = (await get<number>(rewardsBalanceKey(address))) ?? 0;
   const balance = current + credited;
 

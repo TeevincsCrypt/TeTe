@@ -286,7 +286,9 @@ export function signConfirmFunding(address: string, challengeId: string) {
 
 export async function withdrawRewards(address: string) {
   const auth = await signIntent(address, 'withdraw');
-  return post<{ sent: number; transaction: string }>('/api/withdraw', auth);
+  // `remaining` is whatever the daily withdrawal ceiling held back. It stays
+  // credited and is withdrawable tomorrow, so it is worth showing.
+  return post<{ sent: number; remaining: number; transaction: string }>('/api/withdraw', auth);
 }
 
 /** Start a tournament, entering yourself as its first player. */
@@ -367,18 +369,33 @@ export async function fetchChainBalance(address: string): Promise<number | null>
   }
 }
 
-/** Earned-but-not-withdrawn rewards, as the server has them. */
-export async function fetchRewardBalance(address: string): Promise<number | null> {
+/**
+ * Earned-but-not-withdrawn rewards, as the server has them, plus how much has
+ * already left today — the two numbers a withdrawal is decided from, read
+ * together so a screen cannot quote one against a stale copy of the other.
+ */
+export async function fetchRewardState(
+  address: string,
+): Promise<{ balance: number; withdrawnToday: number } | null> {
   try {
     const response = await fetch(`/api/rewards?address=${encodeURIComponent(address)}`, {
       cache: 'no-store',
     });
     if (!response.ok) return null;
-    const body = (await response.json()) as { balance?: number };
-    return typeof body.balance === 'number' ? body.balance : null;
+    const body = (await response.json()) as { balance?: number; withdrawnToday?: number };
+    if (typeof body.balance !== 'number') return null;
+    return {
+      balance: body.balance,
+      withdrawnToday: typeof body.withdrawnToday === 'number' ? body.withdrawnToday : 0,
+    };
   } catch {
     return null;
   }
+}
+
+/** Just the balance, for the screens that show it without offering a payout. */
+export async function fetchRewardBalance(address: string): Promise<number | null> {
+  return (await fetchRewardState(address))?.balance ?? null;
 }
 
 /**
