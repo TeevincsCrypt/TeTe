@@ -135,7 +135,10 @@ export function createCrossingScene(
   // standing in for this frame, and a shared material would repaint all of them.
   const cars: { group: THREE.Group; body: THREE.Mesh }[] = [];
   for (let i = 0; i < 20; i += 1) {
-    const car = buildCar('#ff6a1a', 1.6);
+    // Cars are turned side-on, so their width runs along the row's depth —
+    // it has to stay inside one TILE. At canonical proportions that caps the
+    // length near 2.4; 2.2 leaves a little air around it.
+    const car = buildCar('#ff6a1a', 2.2);
     car.group.visible = false;
     stage.scene.add(car.group);
     cars.push(car);
@@ -143,10 +146,10 @@ export function createCrossingScene(
 
   const trains = pool(stage.scene, 5, () => {
     const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(3.2, 1.3, 1.0),
+      new THREE.BoxGeometry(3.0, 1.0, 0.95),
       new THREE.MeshStandardMaterial({ color: '#b8342a', roughness: 0.55 }),
     );
-    mesh.position.y = 0.65;
+    mesh.position.y = 0.5;
     return mesh;
   });
 
@@ -163,7 +166,9 @@ export function createCrossingScene(
   const hazards = pool(stage.scene, 10, () => new THREE.Mesh(hazardGeo, hazardMat));
 
   const player = buildCharacter(look);
-  player.group.scale.setScalar(0.8);
+  // Slightly taller than a car, which is the proportion this genre reads
+  // best at — and well inside a tile, so a hop lands where it looks like it.
+  player.group.scale.setScalar(0.66);
   stage.scene.add(player.group);
 
   return { stage, player, rows, cars, trains, coins, hazards, cameraX: 0 };
@@ -211,7 +216,7 @@ export function updateCrossingScene(scene: CrossingScene, s: CrossingFrameState)
       trainI += 1;
       if (!mesh) continue;
       mesh.visible = true;
-      mesh.position.set(x, 0.65, z);
+      mesh.position.set(x, 0.5, z);
     } else {
       const entry = scene.cars[carI];
       carI += 1;

@@ -574,18 +574,23 @@ export function buildCar(color: string, length = 4.0): Car {
   });
   const trim = new THREE.MeshStandardMaterial({ color: '#15171c', roughness: 0.65 });
 
+  // Built at a canonical size and scaled to the length asked for, so the
+  // proportions cannot drift apart. Sizing the geometry from `length` while
+  // leaving the width fixed is exactly how Crossing ended up with cars wider
+  // than they were long, and taller than one of its grid tiles.
+  const L = 4.0;
   const W = 1.8;
-  const half = length / 2;
+  const half = L / 2;
 
   // Lower hull, sitting on the wheels.
-  const hull = new THREE.Mesh(new THREE.BoxGeometry(W, 0.42, length), paint);
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(W, 0.42, L), paint);
   hull.position.y = 0.52;
   hull.castShadow = true;
   group.add(hull);
 
   // Upper body, narrower and shorter — the step between the two is the
   // shoulder line that catches the light.
-  const body = new THREE.Mesh(new THREE.BoxGeometry(W * 0.94, 0.34, length * 0.86), paint);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(W * 0.94, 0.34, L * 0.86), paint);
   body.position.y = 0.86;
   body.castShadow = true;
   group.add(body);
@@ -598,12 +603,12 @@ export function buildCar(color: string, length = 4.0): Car {
   group.add(nose);
 
   // Cabin, raked and inset.
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(W * 0.78, 0.46, length * 0.4), glass);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(W * 0.78, 0.46, L * 0.4), glass);
   cabin.position.set(0, 1.2, 0.18);
   cabin.castShadow = true;
   group.add(cabin);
 
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(W * 0.72, 0.1, length * 0.3), paint);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(W * 0.72, 0.1, L * 0.3), paint);
   roof.position.set(0, 1.44, 0.22);
   roof.castShadow = true;
   group.add(roof);
@@ -671,6 +676,8 @@ export function buildCar(color: string, length = 4.0): Car {
   const plate = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.14, 0.06), trim);
   plate.position.set(0, 0.56, half + 0.03);
   group.add(plate);
+
+  group.scale.setScalar(length / L);
 
   return { group, body: hull, paint, wheels, brakes };
 }
