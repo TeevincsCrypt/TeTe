@@ -8,7 +8,6 @@ import { AlleyGame } from '@/components/arcade/AlleyGame';
 import { GameGlyph } from '@/components/arcade/GameGlyph';
 import { GameOverPopup } from '@/components/arcade/GameOverPopup';
 import { PitchGame } from '@/components/arcade/PitchGame';
-import { SliceGame } from '@/components/arcade/SliceGame';
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, CrownIcon } from '@/components/shell/icons';
 import { ApiError, claimGameReward, fetchStatus } from '@/lib/api/client';
 import { cn } from '@/components/ui/cn';
@@ -51,6 +50,11 @@ const OverheatGame = dynamic(
 const InvasionGame = dynamic(
   () => import('@/components/arcade/InvasionGame').then((mod) => mod.InvasionGame),
   { ssr: false, loading: loading3d('bg-[#0b1020]') },
+);
+
+const SliceGame = dynamic(
+  () => import('@/components/arcade/SliceGame').then((mod) => mod.SliceGame),
+  { ssr: false, loading: loading3d('bg-[#efe7de]') },
 );
 
 /**

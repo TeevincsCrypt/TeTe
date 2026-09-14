@@ -2,18 +2,24 @@
 
 import { useRef } from 'react';
 
+import {
+  createSliceScene,
+  disposeSliceScene,
+  updateSliceScene,
+  type FruitKind,
+  type SliceScene,
+  type SliceTarget,
+  type SliceTrailPoint,
+} from '@/lib/arcade/slice3d';
 import { sfxHazard, sfxHit } from '@/lib/arcade/sfx';
 
-import { GameCanvas, type Frame } from './GameCanvas';
-import { drawBomb, drawFruit, type FruitKind } from './sprites';
+import { Game3D, type Frame3D } from './Game3D';
 
-interface Target {
-  x: number; y: number; vx: number; vy: number; r: number;
-  spin: number; angle: number; hit: boolean; bomb: boolean; fruit: FruitKind;
+interface Target extends SliceTarget {
+  vx: number; vy: number; spin: number;
 }
-interface Trail { x: number; y: number; life: number }
 interface State {
-  targets: Target[]; trail: Trail[]; score: number; lives: number;
+  targets: Target[]; trail: SliceTrailPoint[]; score: number; lives: number;
   over: boolean; started: boolean; spawn: number; elapsed: number; combo: number; comboAt: number;
 }
 
@@ -26,6 +32,10 @@ const FRUITS: FruitKind[] = ['melon', 'orange', 'apple', 'lime', 'plum', 'banana
  * arcs; a swipe cuts anything its segment crosses this frame, so fast diagonal
  * strokes chain combos. Hitting a black target costs a life, which is what
  * stops flailing being the optimal strategy.
+ *
+ * The arcs and the segment-against-circle test are unchanged. What the 3D
+ * brings is that a cut fruit actually comes apart — each one is two
+ * hemispheres that separate on the frame it is hit.
  */
 export function SliceGame({ onFinish }: { onFinish: (score: number) => void }) {
   const state = useRef<State>({
@@ -33,6 +43,11 @@ export function SliceGame({ onFinish }: { onFinish: (score: number) => void }) {
     started: false, spawn: 0, elapsed: 0, combo: 0, comboAt: 0,
   });
   const done = useRef(false);
+
+  const scoreRef = useRef<HTMLDivElement | null>(null);
+  const comboRef = useRef<HTMLDivElement | null>(null);
+  const livesRef = useRef<HTMLDivElement | null>(null);
+  const hintRef = useRef<HTMLDivElement | null>(null);
 
   function reset() {
     state.current = {
@@ -42,7 +57,7 @@ export function SliceGame({ onFinish }: { onFinish: (score: number) => void }) {
     done.current = false;
   }
 
-  function frame({ ctx, dt, width, height, pointer }: Frame) {
+  function frame({ handle, dt, width, height, pointer }: Frame3D<SliceScene>) {
     const s = state.current;
     if (!s.started) reset();
 
@@ -120,60 +135,65 @@ export function SliceGame({ onFinish }: { onFinish: (score: number) => void }) {
       }
     }
 
-    // ---- draw -------------------------------------------------------------
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = '#efe7de';
-    ctx.fillRect(0, 0, width, height);
+    updateSliceScene(handle, s, width, height);
 
-    for (const t of s.targets) {
-      if (t.bomb) drawBomb(ctx, t.x, t.y, t.r, t.angle, t.hit);
-      else drawFruit(ctx, t.fruit, t.x, t.y, t.r, t.angle, t.hit);
+    if (scoreRef.current) scoreRef.current.textContent = String(s.score);
+    if (comboRef.current) {
+      const show = s.combo > 1 && !s.over;
+      comboRef.current.style.opacity = show ? '1' : '0';
+      if (show) comboRef.current.textContent = `${s.combo}x`;
     }
-
-    ctx.lineCap = 'round';
-    for (let i = 1; i < s.trail.length; i += 1) {
-      const a = s.trail[i - 1];
-      const b = s.trail[i];
-      if (!a || !b) continue;
-      ctx.globalAlpha = Math.max(0, b.life) * 0.85;
-      ctx.strokeStyle = '#17120e';
-      ctx.lineWidth = 5 * b.life;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+    if (livesRef.current) {
+      const pips = livesRef.current.children;
+      for (let i = 0; i < pips.length; i += 1) {
+        (pips[i] as HTMLElement).style.opacity = i < s.lives ? '1' : '0.18';
+      }
     }
-    ctx.globalAlpha = 1;
-
-    ctx.fillStyle = '#17120e';
-    ctx.font = '900 34px Archivo, system-ui, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(String(s.score), 16, 42);
-
-    for (let i = 0; i < 3; i += 1) {
-      ctx.beginPath();
-      ctx.arc(width - 22 - i * 22, 32, 7, 0, Math.PI * 2);
-      ctx.fillStyle = i < s.lives ? '#cc3118' : 'rgba(23,18,14,0.16)';
-      ctx.fill();
+    if (hintRef.current) {
+      hintRef.current.textContent = s.over
+        ? 'TAP TO RESTART'
+        : 'SWIPE TO SLICE · AVOID THE BOMBS';
     }
-
-    if (s.combo > 1 && !s.over) {
-      ctx.font = '900 15px Archivo, system-ui, sans-serif';
-      ctx.fillStyle = '#ff6a1a';
-      ctx.fillText(`${s.combo}x`, 16, 66);
-    }
-
-    ctx.font = '700 11px Archivo, system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(23,18,14,0.5)';
-    ctx.fillText(s.over ? 'TAP TO RESTART' : 'SWIPE TO SLICE · AVOID THE BOMBS', 16, height - 14);
   }
 
   return (
-    <GameCanvas
-      running
-      onFrame={frame}
+    <Game3D<SliceScene>
       ariaLabel="Slice game board"
-      className="h-[62vh] max-h-[520px] w-full rounded-[1.25rem] bg-[#efe7de]"
+      className="h-[62vh] max-h-[520px] bg-[#efe7de]"
+      setup={(canvas) => createSliceScene(canvas)}
+      onFrame={frame}
+      onDispose={disposeSliceScene}
+      hud={
+        <>
+          <div className="absolute left-3 top-3">
+            <div
+              ref={scoreRef}
+              className="text-[1.9rem] font-black leading-none text-[#17120e]"
+              style={{ fontFamily: 'Archivo, system-ui, sans-serif' }}
+            >
+              0
+            </div>
+            <div
+              ref={comboRef}
+              className="mt-1 text-[0.9rem] font-black leading-none text-[#ff6a1a] opacity-0 transition-opacity"
+              style={{ fontFamily: 'Archivo, system-ui, sans-serif' }}
+            />
+          </div>
+
+          <div ref={livesRef} className="absolute right-3 top-3 flex gap-1.5">
+            <span className="size-3.5 rounded-full bg-[#cc3118]" />
+            <span className="size-3.5 rounded-full bg-[#cc3118]" />
+            <span className="size-3.5 rounded-full bg-[#cc3118]" />
+          </div>
+
+          <div
+            ref={hintRef}
+            className="absolute bottom-3 left-3 text-[0.68rem] font-bold tracking-wide text-[#17120e]/55"
+          >
+            SWIPE TO SLICE · AVOID THE BOMBS
+          </div>
+        </>
+      }
     />
   );
 }
