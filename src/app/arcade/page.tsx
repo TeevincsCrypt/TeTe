@@ -1,11 +1,11 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { AlleyGame } from '@/components/arcade/AlleyGame';
 import { CrossingGame } from '@/components/arcade/CrossingGame';
-import { DriftGame } from '@/components/arcade/DriftGame';
 import { GameGlyph } from '@/components/arcade/GameGlyph';
 import { GameOverPopup } from '@/components/arcade/GameOverPopup';
 import { InvasionGame } from '@/components/arcade/InvasionGame';
@@ -24,6 +24,18 @@ import { useCharacter } from '@/state/use-character';
 import { useMiniApp } from '@/state/mini-app-provider';
 import { useRewardBalance } from '@/state/use-reward-balance';
 import { useProgress } from '@/state/use-progress';
+
+// Drift pulls in Three.js for its 3D scene — lazy-load it so that weight only
+// ever ships to a player who actually opens Drift, not to every arcade visit.
+const DriftGame = dynamic(
+  () => import('@/components/arcade/DriftGame').then((mod) => mod.DriftGame),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[62vh] max-h-[520px] w-full animate-pulse rounded-[1.25rem] bg-[#bcd3dd]" />
+    ),
+  },
+);
 
 /**
  * The arcade.
