@@ -18,14 +18,25 @@ import { get, set } from './store';
  *   - score and coins are sanity-bounded, which rejects garbage and overflow
  *     rather than skilled play (a real run never comes close to these)
  *   - submissions are throttled per address, so nobody out-paces a real round
- *   - a hard per-round ceiling caps what any single report can ever be worth
  *
- * Earning itself is uncapped per day: a player who keeps playing keeps
- * earning. The per-round ceiling is therefore the whole story here, because
- * it is what makes unverified reports survivable — the worst a crafted one can
- * do is pay an ordinary round, so accumulating anything meaningful costs real
- * time against the cooldown. What leaves the treasury in a day is bounded
- * separately, at the withdrawal — see lib/wallet/withdrawal.
+ * Earning is otherwise uncapped, per round and per day. A round pays for
+ * exactly what it did: twice the distance is twice the NIM, all the way up.
+ * There was a 1 NIM per-round ceiling here and it was a mistake — past about
+ * a thousand metres of Drift, or two hundred rows of Crossing, playing better
+ * paid nothing at all, which is the opposite of what an arcade is for.
+ *
+ * That ceiling used to be the load-bearing guard against a crafted report,
+ * back when a credited balance could be withdrawn the moment it landed. It is
+ * not needed for that any more: what actually leaves the treasury is bounded
+ * at the withdrawal, at 100 NIM per address per UTC day, however large a
+ * balance gets — see lib/wallet/withdrawal. A fabricated report can still
+ * inflate a ledger entry, but it can no longer turn into NIM any faster than
+ * an honest one.
+ *
+ * What that trade costs, stated plainly: the ledger is now a liability that
+ * can run ahead of what was really earned, and the daily withdrawal cap is
+ * the only thing rationing it. Closing that properly needs verified rounds or
+ * something at stake before earning, neither of which exists yet.
  */
 const RATE_LUNA: Record<GameId, number> = {
   crossing: 500, // 0.005 NIM per row
@@ -66,18 +77,6 @@ const MAX_SCORE: Record<GameId, number> = {
  * not just generous to the right way.
  */
 const MAX_COINS = 50;
-
-/**
- * Hard ceiling on what any single round can credit, whatever it reports.
- *
- * This is the guard that makes the reports being unverified survivable. Score
- * and coin ceilings bound the inputs, but they multiply into a payout, and the
- * product was large enough that one crafted request drew a whole day's cap.
- * Capping the output directly means the worst a fabricated round can do is
- * earn one ordinary round's worth, so draining anything meaningful takes real
- * time against the cooldown rather than a single call.
- */
-const MAX_ROUND_LUNA = 100_000; // 1 NIM
 
 /** The daily check-in. Flat, not scaled by streak — the pool is finite. */
 const CHECK_IN_LUNA = 50_000; // 0.5 NIM
@@ -166,9 +165,12 @@ export async function creditGameReward(
   const day: DailyTotal = stored?.date === today() ? stored : { date: today(), luna: 0 };
 
   // Hazards can take a round below zero; that costs the round, never the
-  // balance already earned.
-  const earned = Math.max(0, Math.round(score * RATE_LUNA[gameId]) + coins * COIN_LUNA - hazards * HAZARD_LUNA);
-  const credited = Math.min(earned, MAX_ROUND_LUNA);
+  // balance already earned. Nothing clamps the result: a long run is worth
+  // what it ran.
+  const credited = Math.max(
+    0,
+    Math.round(score * RATE_LUNA[gameId]) + coins * COIN_LUNA - hazards * HAZARD_LUNA,
+  );
 
   const current = (await get<number>(rewardsBalanceKey(address))) ?? 0;
   const balance = current + credited;
