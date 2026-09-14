@@ -9,7 +9,7 @@ import {
   hasDurableStore,
   hasTreasury,
 } from './env';
-import { rpc, transactionsFor, type RpcTransaction } from './rpc';
+import { accountBalance, rpc, transactionsFor, type RpcTransaction } from './rpc';
 
 /**
  * Moving real money.
@@ -435,6 +435,33 @@ export async function payout(recipient: string, luna: number, memo: string): Pro
   }
   if (luna > MAX_PAYOUT_LUNA) {
     throw new TreasuryError('Payout exceeds the configured ceiling.');
+  }
+
+  // Can the treasury actually cover this?
+  //
+  // This is the one check that turns the worst failure this code has into an
+  // ordinary error. A send the treasury cannot fund is still accepted by the
+  // node and still returns a hash — it is only dropped later, at block
+  // inclusion — so without this the caller zeroes a player's balance, reports
+  // "sent", and the money never moves. That is precisely how real NIM went
+  // missing with a success message on screen.
+  //
+  // A balance that cannot be read is not evidence of anything, so a failed
+  // read lets the send proceed rather than blocking payouts on a node hiccup.
+  // Only a balance we successfully read, and that genuinely falls short, stops
+  // the send here — before anything has been spent.
+  let balance: number | null = null;
+  try {
+    balance = await accountBalance(TREASURY_ADDRESS as string);
+  } catch {
+    /* Unreadable balance is not a reason to refuse a payout that may be fine. */
+  }
+  if (balance !== null && balance < luna) {
+    throw new TreasuryError(
+      `The treasury cannot cover this payout: it holds ${balance / 100_000} NIM and this needs ${
+        luna / 100_000
+      } NIM. Nothing was sent and nothing was deducted — top up the treasury and try again.`,
+    );
   }
 
   await rpc('unlockAccount', [TREASURY_ADDRESS, TREASURY_PASSPHRASE, 10]);
