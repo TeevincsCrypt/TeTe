@@ -11,8 +11,8 @@ import {
   type AlleyItem,
   type AlleyScene,
 } from '@/lib/arcade/alley3d';
+import { currentCharacter } from '@/lib/arcade/characters';
 import { sfxCoin, sfxHazard, sfxHit } from '@/lib/arcade/sfx';
-import { useCharacter } from '@/state/use-character';
 
 import { Game3D, type Frame3D } from './Game3D';
 
@@ -62,9 +62,10 @@ export function AlleyGame({
 }: {
   onFinish: (score: number, coins: number, hazards: number) => void;
 }) {
-  const { character } = useCharacter();
-  const skin = useRef({ body: character.body, accent: character.accent });
-  skin.current = { body: character.body, accent: character.accent };
+  // The whole character is a Look, so the scene gets gear and build as well as
+  // colour. Read synchronously: this figure's geometry is assembled once when
+  // the scene is built, which happens before the character hook's effect runs.
+  const skin = useRef(currentCharacter());
 
   const state = useRef<State>({ ...START, started: false });
   const done = useRef(false);
@@ -311,7 +312,7 @@ export function AlleyGame({
     <Game3D<AlleyScene>
       ariaLabel="Alley game board"
       className="h-[62vh] max-h-[520px] bg-[#15110d]"
-      setup={(canvas) => createAlleyScene(canvas, skin.current.body, skin.current.accent)}
+      setup={(canvas) => createAlleyScene(canvas, skin.current)}
       onFrame={frame}
       onDispose={disposeAlleyScene}
       hud={

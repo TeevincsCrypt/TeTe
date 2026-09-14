@@ -9,8 +9,8 @@ import {
   type RushScene,
   type RushThing,
 } from '@/lib/arcade/rush3d';
+import { currentCharacter } from '@/lib/arcade/characters';
 import { sfxCoin, sfxHazard, sfxJump } from '@/lib/arcade/sfx';
-import { useCharacter } from '@/state/use-character';
 
 import { Game3D, Hud, type Frame3D } from './Game3D';
 
@@ -53,9 +53,10 @@ export function RushGame({
 }: {
   onFinish: (score: number, coins: number, hazards: number) => void;
 }) {
-  const { character } = useCharacter();
-  const skin = useRef({ body: character.body, accent: character.accent });
-  skin.current = { body: character.body, accent: character.accent };
+  // The whole character is a Look, so the scene gets gear and build as well as
+  // colour. Read synchronously: this figure's geometry is assembled once when
+  // the scene is built, which happens before the character hook's effect runs.
+  const skin = useRef(currentCharacter());
 
   const state = useRef<State>({ ...START, started: false });
   const done = useRef(false);
@@ -217,7 +218,7 @@ export function RushGame({
     <Game3D<RushScene>
       ariaLabel="Rush game board"
       className="h-[62vh] max-h-[520px] bg-[#1d2433]"
-      setup={(canvas) => createRushScene(canvas, skin.current.body, skin.current.accent)}
+      setup={(canvas) => createRushScene(canvas, skin.current)}
       onFrame={frame}
       onDispose={disposeRushScene}
       hud={

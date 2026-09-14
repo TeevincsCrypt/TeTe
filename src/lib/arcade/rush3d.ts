@@ -25,6 +25,7 @@ import {
   type Character,
   type Stage,
 } from './three-kit';
+import type { Look } from './characters';
 
 /** World units per metre of track. */
 const DEPTH = 1;
@@ -159,7 +160,7 @@ export interface RushScene {
   cameraX: number;
 }
 
-export function createRushScene(canvas: HTMLCanvasElement, color: string, accent: string): RushScene {
+export function createRushScene(canvas: HTMLCanvasElement, look: Look): RushScene {
   const stage = createStage(canvas, {
     sky: '#1d2433',
     fog: [26, 72],
@@ -224,7 +225,7 @@ export function createRushScene(canvas: HTMLCanvasElement, color: string, accent
 
   const lamps = pool(stage.scene, 10, () => buildLamp());
 
-  const runner = buildCharacter(color, accent);
+  const runner = buildCharacter(look);
   stage.scene.add(runner.group);
 
   return { stage, runner, track, sleepers, trains, barriers, rails, coins, hazards, lamps, cameraX: 0 };

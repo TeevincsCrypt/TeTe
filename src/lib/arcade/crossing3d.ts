@@ -23,6 +23,7 @@ import {
   type Character,
   type Stage,
 } from './three-kit';
+import type { Look } from './characters';
 
 /** World units per grid square. */
 const TILE = 1.4;
@@ -85,8 +86,7 @@ export interface CrossingScene {
 
 export function createCrossingScene(
   canvas: HTMLCanvasElement,
-  color: string,
-  accent: string,
+  look: Look,
 ): CrossingScene {
   const stage = createStage(canvas, {
     sky: '#bfd8e6',
@@ -159,7 +159,7 @@ export function createCrossingScene(
   });
   const hazards = pool(stage.scene, 10, () => new THREE.Mesh(hazardGeo, hazardMat));
 
-  const player = buildCharacter(color, accent);
+  const player = buildCharacter(look);
   player.group.scale.setScalar(0.8);
   stage.scene.add(player.group);
 

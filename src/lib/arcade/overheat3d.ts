@@ -22,6 +22,7 @@ import {
   type Character,
   type Stage,
 } from './three-kit';
+import type { Look } from './characters';
 
 /** Pixels of terrain height per metre ridden — the game's own scale. */
 export const PPM = 6;
@@ -152,8 +153,7 @@ export interface OverheatScene {
 
 export function createOverheatScene(
   canvas: HTMLCanvasElement,
-  color: string,
-  accent: string,
+  look: Look,
 ): OverheatScene {
   const stage = createStage(canvas, {
     sky: '#1b2a3a',
@@ -198,10 +198,10 @@ export function createOverheatScene(
   });
   const hazards = pool(stage.scene, 12, () => new THREE.Mesh(hazardGeo, hazardMat));
 
-  const bike = buildBike(color);
+  const bike = buildBike(look.body);
   stage.scene.add(bike.group);
 
-  const rider = buildCharacter(color, accent);
+  const rider = buildCharacter(look);
   rider.group.scale.setScalar(0.62);
   // Seated: thighs forward, torso tipped over the bars.
   rider.legL.rotation.x = -1.5;

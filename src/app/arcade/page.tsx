@@ -4,9 +4,10 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+import { CharacterPicker } from '@/components/arcade/CharacterPicker';
 import { GameArt } from '@/components/arcade/GameArt';
 import { GameOverPopup } from '@/components/arcade/GameOverPopup';
-import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, CrownIcon } from '@/components/shell/icons';
+import { ChevronLeftIcon, ChevronRightIcon, CrownIcon } from '@/components/shell/icons';
 import { ApiError, claimGameReward, fetchStatus } from '@/lib/api/client';
 import { cn } from '@/components/ui/cn';
 import { PhaseNote } from '@/components/ui/PhaseNote';
@@ -192,37 +193,11 @@ export default function ArcadePage() {
         </div>
       </header>
 
-      <div className="pt-5">
-        <p className="text-[0.625rem] font-bold uppercase tracking-[0.12em] text-faint">
-          Your character
-        </p>
-        <div className="mt-2.5 flex gap-2.5">
-          {characters.map((option) => {
-            const selected = option.id === character.id;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => setCharacter(option.id)}
-                aria-label={option.name}
-                aria-pressed={selected}
-                className="flex size-11 shrink-0 items-center justify-center rounded-full transition-transform duration-100 active:scale-90"
-                style={{ backgroundColor: option.body }}
-              >
-                {selected && (
-                  <span className="flex size-5 items-center justify-center rounded-full bg-on-accent text-accent">
-                    <CheckIcon className="size-3" strokeWidth={3} />
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-2 text-[0.6875rem] leading-snug text-faint">
-          Colours your player in Crossing, Drift, Rush, Invasion, Overheat and Alley — Pitch and
-          Slice have no on-screen character to skin.
-        </p>
-      </div>
+      <CharacterPicker
+        characters={characters}
+        selectedId={character.id}
+        onSelect={setCharacter}
+      />
 
       {/* Cover art rather than a row of icons: the key art carries each game's
           own title, so the label row sits under it instead of over the top. */}

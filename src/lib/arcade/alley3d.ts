@@ -20,6 +20,7 @@ import {
   type Character,
   type Stage,
 } from './three-kit';
+import type { Look } from './characters';
 
 /** World units across the street, and of walkable depth. */
 const ALLEY_W = 24;
@@ -102,8 +103,7 @@ export interface AlleyScene {
 
 export function createAlleyScene(
   canvas: HTMLCanvasElement,
-  color: string,
-  accent: string,
+  look: Look,
 ): AlleyScene {
   const stage = createStage(canvas, {
     sky: '#15110d',
@@ -157,7 +157,7 @@ export function createAlleyScene(
   lamp.position.set(9, 6.6, -1);
   stage.scene.add(lamp);
 
-  const player = buildCharacter(color, accent);
+  const player = buildCharacter(look);
   stage.scene.add(player.group);
 
   const heldPipe = buildPipe();
@@ -174,7 +174,7 @@ export function createAlleyScene(
 
   const enemies: Character[] = [];
   for (let i = 0; i < 8; i += 1) {
-    const enemy = buildCharacter('#6d4aff', '#2a2a2e');
+    const enemy = buildCharacter({ body: '#6d4aff', accent: '#2a2a2e', helmet: 'none', hair: 'short' });
     enemy.group.visible = false;
     stage.scene.add(enemy.group);
     enemies.push(enemy);

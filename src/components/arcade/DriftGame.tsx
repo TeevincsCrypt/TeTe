@@ -13,6 +13,7 @@ import {
   type Pickup,
   type Slice,
 } from '@/lib/arcade/drift3d';
+import { currentCharacter } from '@/lib/arcade/characters';
 import { sfxCoin, sfxHazard } from '@/lib/arcade/sfx';
 import { useCharacter } from '@/state/use-character';
 
@@ -44,8 +45,11 @@ export function DriftGame({
 }: {
   onFinish: (score: number, coins: number, hazards: number) => void;
 }) {
+  // Seeded synchronously — the scene is built in an effect that runs before
+  // the character hook resolves — then kept live, which works here because the
+  // car's colour is a material rather than baked geometry.
   const { character } = useCharacter();
-  const characterColor = useRef(character.body);
+  const characterColor = useRef(currentCharacter().body);
   characterColor.current = character.body;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
