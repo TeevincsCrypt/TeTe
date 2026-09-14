@@ -302,6 +302,33 @@ export function pool<T extends THREE.Object3D>(scene: THREE.Scene, count: number
   return items;
 }
 
+/**
+ * Lay a pool out along the track and scroll it past the player forever.
+ *
+ * Each item owns one slot of an endlessly repeating span, so a fixed handful
+ * of objects reads as a continuous line of scenery running to the horizon.
+ * `place` receives the item and its depth ahead of the player, negative into
+ * the screen, and decides the rest.
+ */
+export function recycleAlong<T extends THREE.Object3D>(
+  items: T[],
+  spacing: number,
+  distance: number,
+  place: (item: T, index: number, z: number) => void,
+) {
+  const span = items.length * spacing;
+  if (span <= 0) return;
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    if (!item) continue;
+    // Wrapped into [0, span) so an item leaving behind the camera reappears
+    // at the far end rather than drifting away for good.
+    const along = (((i * spacing - distance) % span) + span) % span;
+    item.visible = true;
+    place(item, i, -along);
+  }
+}
+
 /** Hide whatever a frame did not use, from `used` onwards. */
 export function hideRest(items: THREE.Object3D[], used: number) {
   for (let i = used; i < items.length; i += 1) {
