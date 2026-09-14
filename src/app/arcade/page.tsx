@@ -7,7 +7,6 @@ import { useEffect, useState } from 'react';
 import { AlleyGame } from '@/components/arcade/AlleyGame';
 import { GameGlyph } from '@/components/arcade/GameGlyph';
 import { GameOverPopup } from '@/components/arcade/GameOverPopup';
-import { InvasionGame } from '@/components/arcade/InvasionGame';
 import { PitchGame } from '@/components/arcade/PitchGame';
 import { SliceGame } from '@/components/arcade/SliceGame';
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, CrownIcon } from '@/components/shell/icons';
@@ -47,6 +46,11 @@ const CrossingGame = dynamic(
 const OverheatGame = dynamic(
   () => import('@/components/arcade/OverheatGame').then((mod) => mod.OverheatGame),
   { ssr: false, loading: loading3d('bg-[#1b2a3a]') },
+);
+
+const InvasionGame = dynamic(
+  () => import('@/components/arcade/InvasionGame').then((mod) => mod.InvasionGame),
+  { ssr: false, loading: loading3d('bg-[#0b1020]') },
 );
 
 /**

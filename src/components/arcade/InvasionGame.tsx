@@ -2,22 +2,26 @@
 
 import { useRef } from 'react';
 
+import {
+  createInvasionScene,
+  disposeInvasionScene,
+  updateInvasionScene,
+  type InvasionDrop,
+  type InvasionInvader,
+  type InvasionScene,
+  type InvasionShot,
+} from '@/lib/arcade/invasion3d';
 import { sfxCoin, sfxHazard, sfxHit, sfxShoot } from '@/lib/arcade/sfx';
 import { useCharacter } from '@/state/use-character';
 
-import { GameCanvas, type Frame } from './GameCanvas';
-import { drawCannon, drawCoin, drawHazard, drawInvader } from './sprites';
+import { Game3D, type Frame3D } from './Game3D';
 
 const COLS = 7;
 const ROWS = 4;
 
-interface Invader { col: number; row: number; rank: 0 | 1 | 2; alive: boolean }
-interface Shot { x: number; y: number; vy: number; mine: boolean }
-interface Drop { x: number; y: number; kind: 'coin' | 'hazard' }
-
 interface State {
   started: boolean; over: boolean;
-  invaders: Invader[]; shots: Shot[]; drops: Drop[];
+  invaders: InvasionInvader[]; shots: InvasionShot[]; drops: InvasionDrop[];
   /** Formation offset, in pixels from its starting column. */
   driftX: number; driftDir: 1 | -1; stepDown: number;
   marchClock: number; wobble: boolean;
@@ -48,6 +52,10 @@ const START: Omit<State, 'started'> = {
  * from downed invaders and have to be caught before they land — going for one
  * pulls the cannon out of position, which is where the cost sits. Bombs that
  * connect count as hazards and take a life.
+ *
+ * The playfield stays the plane it always was; the depth goes into making the
+ * things in it solid, and every position still comes from the same pixel-space
+ * arithmetic the collisions use.
  */
 export function InvasionGame({
   onFinish,
@@ -55,11 +63,20 @@ export function InvasionGame({
   onFinish: (score: number, coins: number, hazards: number) => void;
 }) {
   const { character } = useCharacter();
+  const skin = useRef({ body: character.body, accent: character.accent });
+  skin.current = { body: character.body, accent: character.accent };
+
   const state = useRef<State>({ ...START, started: false });
   const done = useRef(false);
 
-  function buildWave(wave: number) {
-    const invaders: Invader[] = [];
+  const scoreRef = useRef<HTMLDivElement | null>(null);
+  const waveRef = useRef<HTMLDivElement | null>(null);
+  const tallyRef = useRef<HTMLDivElement | null>(null);
+  const hintRef = useRef<HTMLDivElement | null>(null);
+  const livesRef = useRef<HTMLDivElement | null>(null);
+
+  function buildWave() {
+    const invaders: InvasionInvader[] = [];
     for (let row = 0; row < ROWS; row += 1) {
       for (let col = 0; col < COLS; col += 1) {
         invaders.push({
@@ -71,12 +88,11 @@ export function InvasionGame({
         });
       }
     }
-    return { invaders, wave };
+    return invaders;
   }
 
   function reset() {
-    const built = buildWave(1);
-    state.current = { ...START, started: true, invaders: built.invaders };
+    state.current = { ...START, started: true, invaders: buildWave() };
     done.current = false;
   }
 
@@ -89,7 +105,7 @@ export function InvasionGame({
     }
   }
 
-  function frame({ ctx, dt, width, height, pointer }: Frame) {
+  function frame({ handle, dt, width, height, pointer }: Frame3D<InvasionScene>) {
     const s = state.current;
     if (!s.started) reset();
 
@@ -221,8 +237,7 @@ export function InvasionGame({
 
       // ---- wave cleared, or they reached the ground ------------------------
       if (alive.length === 0) {
-        const next = buildWave(s.wave + 1);
-        s.invaders = next.invaders;
+        s.invaders = buildWave();
         s.wave += 1;
         s.driftX = 0;
         s.driftDir = 1;
@@ -236,75 +251,82 @@ export function InvasionGame({
 
     s.hitFlash *= Math.max(0, 1 - dt * 2.4);
 
-    // ---- draw --------------------------------------------------------------
-    ctx.clearRect(0, 0, width, height);
+    updateInvasionScene(
+      handle,
+      { ...s, layout: { ox, cellW, cellH, topY, groundY } },
+      width,
+      height,
+    );
 
-    // Starfield, seeded off position so it never shimmers.
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    for (let i = 0; i < 34; i += 1) {
-      const sx = ((i * 137) % 100) / 100 * width;
-      const sy = ((i * 331) % 100) / 100 * (groundY - 20);
-      ctx.fillRect(sx, sy, i % 5 === 0 ? 2 : 1, i % 5 === 0 ? 2 : 1);
+    if (scoreRef.current) scoreRef.current.textContent = String(s.downed);
+    if (waveRef.current) waveRef.current.textContent = `WAVE ${s.wave}`;
+    if (tallyRef.current) {
+      tallyRef.current.textContent = String(s.coins - s.hazards);
+      tallyRef.current.style.color =
+        s.hitFlash < -0.05 ? '#4ade80' : s.hitFlash > 0.05 ? '#ff6b6b' : '#ffffff';
     }
-
-    for (const inv of s.invaders) {
-      if (!inv.alive) continue;
-      const ix = ox + inv.col * cellW + cellW / 2 + s.driftX;
-      const iy = topY + inv.row * cellH + s.stepDown;
-      drawInvader(ctx, inv.rank, ix, iy, invaderR, s.wobble);
+    if (livesRef.current) {
+      const pips = livesRef.current.children;
+      for (let i = 0; i < pips.length; i += 1) {
+        (pips[i] as HTMLElement).style.opacity = i < s.lives ? '1' : '0.2';
+      }
     }
-
-    for (const drop of s.drops) {
-      if (drop.kind === 'coin') drawCoin(ctx, drop.x, drop.y, 11, performance.now() / 240);
-      else drawHazard(ctx, drop.x, drop.y, 11);
+    if (hintRef.current) {
+      hintRef.current.textContent = s.over
+        ? 'TAP TO RESTART'
+        : 'DRAG TO STEER · IT FIRES ITSELF';
     }
-
-    for (const shot of s.shots) {
-      ctx.fillStyle = shot.mine ? '#c8ff4d' : '#ff6b6b';
-      ctx.fillRect(shot.x - 1.5, shot.y - 9, 3, 14);
-    }
-
-    ctx.fillStyle = 'rgba(200,255,77,0.45)';
-    ctx.fillRect(0, groundY + 12, width, 2);
-
-    drawCannon(ctx, cannonPx, groundY, 42, character.body, character.accent);
-
-    // ---- hud ---------------------------------------------------------------
-    ctx.fillStyle = '#eef2ea';
-    ctx.font = '900 34px Archivo, system-ui, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(String(s.downed), 16, 42);
-
-    ctx.font = '700 11px Archivo, system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(238,242,234,0.55)';
-    ctx.fillText(`WAVE ${s.wave}`, 16, 58);
-
-    // Filled from the left, so lives read as draining rightward rather than
-    // appearing to fill up as they are lost.
-    for (let i = 0; i < 3; i += 1) {
-      ctx.fillStyle = i < s.lives ? '#ff6a1a' : 'rgba(238,242,234,0.2)';
-      ctx.beginPath();
-      ctx.arc(width - 52 + i * 16, 54, 5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    drawCoin(ctx, width - 74, 32, 12);
-    ctx.textAlign = 'left';
-    ctx.font = '900 24px Archivo, system-ui, sans-serif';
-    ctx.fillStyle = s.hitFlash < -0.05 ? '#4ade80' : s.hitFlash > 0.05 ? '#ff6b6b' : '#eef2ea';
-    ctx.fillText(String(s.coins - s.hazards), width - 56, 41);
-
-    ctx.font = '700 11px Archivo, system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(238,242,234,0.5)';
-    ctx.fillText(s.over ? 'TAP TO RESTART' : 'DRAG TO STEER · IT FIRES ITSELF', 16, height - 14);
   }
 
   return (
-    <GameCanvas
-      running
-      onFrame={frame}
+    <Game3D<InvasionScene>
       ariaLabel="Invasion game board"
-      className="h-[62vh] max-h-[520px] w-full rounded-[1.25rem] bg-[#0b1020]"
+      className="h-[62vh] max-h-[520px] bg-[#0b1020]"
+      setup={(canvas) => createInvasionScene(canvas, skin.current.body, skin.current.accent)}
+      onFrame={frame}
+      onDispose={disposeInvasionScene}
+      hud={
+        <>
+          <div className="absolute left-3 top-3 rounded-lg bg-black/25 px-2.5 py-1">
+            <div
+              ref={scoreRef}
+              className="text-[1.9rem] font-black leading-none text-white drop-shadow"
+              style={{ fontFamily: 'Archivo, system-ui, sans-serif' }}
+            >
+              0
+            </div>
+            <div ref={waveRef} className="mt-0.5 text-[0.58rem] font-bold tracking-[0.14em] text-white/60">
+              WAVE 1
+            </div>
+          </div>
+
+          <div className="absolute right-3 top-3 flex flex-col items-end gap-1.5">
+            <div className="flex items-center gap-1.5 rounded-lg bg-black/25 px-2.5 py-1.5">
+              <span className="size-3 rounded-full bg-[#f2c14e] shadow-[inset_-1px_-1px_2px_rgba(0,0,0,0.35)]" />
+              <div
+                ref={tallyRef}
+                className="text-[1.3rem] font-black leading-none text-white"
+                style={{ fontFamily: 'Archivo, system-ui, sans-serif' }}
+              >
+                0
+              </div>
+            </div>
+            {/* Lives drain rightward as they are lost. */}
+            <div ref={livesRef} className="flex gap-1 rounded-md bg-black/25 px-2 py-1.5">
+              <span className="size-2.5 rounded-full bg-[#ff6a1a]" />
+              <span className="size-2.5 rounded-full bg-[#ff6a1a]" />
+              <span className="size-2.5 rounded-full bg-[#ff6a1a]" />
+            </div>
+          </div>
+
+          <div
+            ref={hintRef}
+            className="absolute bottom-3 left-3 rounded-md bg-black/25 px-2 py-1 text-[0.68rem] font-bold tracking-wide text-white/90"
+          >
+            DRAG TO STEER · IT FIRES ITSELF
+          </div>
+        </>
+      }
     />
   );
 }
