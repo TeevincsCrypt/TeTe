@@ -14,6 +14,7 @@ import { Eyebrow, Sticker } from '@/components/ui/Sticker';
 import { ConnectPanel } from '@/components/wallet/ConnectPanel';
 import { ApiError, cancelBracket, fetchBracket, joinBracket, kickFromBracket } from '@/lib/api/client';
 import {
+  bracketHost,
   matchesInRound,
   roundCount,
   BRACKET_STATE_LABEL,
@@ -75,9 +76,12 @@ export default function BracketDetailPage() {
 
   const address = nimiq.address ? compactAddress(nimiq.address) : null;
   const iAmIn = address ? bracket.entrants.some((e) => compactAddress(e.address) === address) : false;
-  // A tournament created before hostAddress existed on the record has none —
-  // treat that as "no known host" rather than crashing on it.
-  const isHost = Boolean(address && bracket.hostAddress && compactAddress(bracket.hostAddress) === address);
+  // Resolved rather than read straight off the record: tournaments created
+  // before hostAddress existed fall back to their first entrant, who is the
+  // creator. The server resolves it the same way, so this button and the API
+  // behind it always agree.
+  const host = bracketHost(bracket);
+  const isHost = Boolean(address && host && compactAddress(host) === address);
   const format = formatById(bracket.format);
   const title = bracket.title?.trim() || `${format.name} tournament`;
   const champion = bracket.championSlot !== undefined ? bracket.entrants[bracket.championSlot] : undefined;
@@ -256,7 +260,7 @@ export default function BracketDetailPage() {
           entrants={bracket.entrants}
           size={bracket.size}
           canKick={isHost && bracket.state === 'open'}
-          hostAddress={bracket.hostAddress}
+          hostAddress={host}
           kicking={kicking}
           onKick={kick}
         />

@@ -1,6 +1,7 @@
 import 'server-only';
 
 import {
+  bracketHost,
   isFull,
   matchesInRound,
   pairRound0,
@@ -204,15 +205,14 @@ export async function joinBracket(id: string, address: string, username?: string
 export async function kickFromBracket(id: string, hostAddress: string, target: string): Promise<Outcome<Bracket>> {
   const bracket = await readBracket(id);
   if (!bracket) return fail('No such tournament.', 404);
-  // A tournament created before hostAddress existed on the record has none —
-  // treat that as "no known host" rather than crashing on it.
-  if (!bracket.hostAddress || compactAddress(bracket.hostAddress) !== compactAddress(hostAddress)) {
+  const host = bracketHost(bracket);
+  if (!host || compactAddress(host) !== compactAddress(hostAddress)) {
     return fail('Only the player who started this tournament can remove someone.', 403);
   }
   if (bracket.state !== 'open') {
     return fail('Players can only be removed before the tournament starts.', 409);
   }
-  if (compactAddress(target) === compactAddress(hostAddress)) {
+  if (compactAddress(target) === compactAddress(host)) {
     return fail('You cannot remove yourself — call the tournament off instead.', 400);
   }
 
@@ -243,9 +243,8 @@ export async function kickFromBracket(id: string, hostAddress: string, target: s
 export async function cancelBracket(id: string, address: string): Promise<Outcome<Bracket>> {
   const bracket = await readBracket(id);
   if (!bracket) return fail('No such tournament.', 404);
-  // A tournament created before hostAddress existed on the record has none —
-  // treat that as "no known host" rather than crashing on it.
-  if (!bracket.hostAddress || compactAddress(bracket.hostAddress) !== compactAddress(address)) {
+  const host = bracketHost(bracket);
+  if (!host || compactAddress(host) !== compactAddress(address)) {
     return fail('Only the player who started this tournament can call it off.', 403);
   }
   if (bracket.state === 'complete') return fail('This tournament is already complete.', 409);
