@@ -11,7 +11,6 @@ import { GameOverPopup } from '@/components/arcade/GameOverPopup';
 import { InvasionGame } from '@/components/arcade/InvasionGame';
 import { OverheatGame } from '@/components/arcade/OverheatGame';
 import { PitchGame } from '@/components/arcade/PitchGame';
-import { RushGame } from '@/components/arcade/RushGame';
 import { SliceGame } from '@/components/arcade/SliceGame';
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, CrownIcon } from '@/components/shell/icons';
 import { ApiError, claimGameReward, fetchStatus } from '@/lib/api/client';
@@ -25,16 +24,21 @@ import { useMiniApp } from '@/state/mini-app-provider';
 import { useRewardBalance } from '@/state/use-reward-balance';
 import { useProgress } from '@/state/use-progress';
 
-// Drift pulls in Three.js for its 3D scene — lazy-load it so that weight only
-// ever ships to a player who actually opens Drift, not to every arcade visit.
+// The 3D games pull in Three.js — lazy-loaded so that weight only ships to a
+// player who actually opens one, rather than on every arcade visit. They share
+// one chunk, so opening a second 3D game costs nothing further.
+const loading3d = (tone: string) => () => (
+  <div className={`h-[62vh] max-h-[520px] w-full animate-pulse rounded-[1.25rem] ${tone}`} />
+);
+
 const DriftGame = dynamic(
   () => import('@/components/arcade/DriftGame').then((mod) => mod.DriftGame),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-[62vh] max-h-[520px] w-full animate-pulse rounded-[1.25rem] bg-[#bcd3dd]" />
-    ),
-  },
+  { ssr: false, loading: loading3d('bg-[#bcd3dd]') },
+);
+
+const RushGame = dynamic(
+  () => import('@/components/arcade/RushGame').then((mod) => mod.RushGame),
+  { ssr: false, loading: loading3d('bg-[#1d2433]') },
 );
 
 /**
