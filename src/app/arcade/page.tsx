@@ -8,7 +8,6 @@ import { AlleyGame } from '@/components/arcade/AlleyGame';
 import { GameGlyph } from '@/components/arcade/GameGlyph';
 import { GameOverPopup } from '@/components/arcade/GameOverPopup';
 import { InvasionGame } from '@/components/arcade/InvasionGame';
-import { OverheatGame } from '@/components/arcade/OverheatGame';
 import { PitchGame } from '@/components/arcade/PitchGame';
 import { SliceGame } from '@/components/arcade/SliceGame';
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, CrownIcon } from '@/components/shell/icons';
@@ -43,6 +42,11 @@ const RushGame = dynamic(
 const CrossingGame = dynamic(
   () => import('@/components/arcade/CrossingGame').then((mod) => mod.CrossingGame),
   { ssr: false, loading: loading3d('bg-[#bfd8e6]') },
+);
+
+const OverheatGame = dynamic(
+  () => import('@/components/arcade/OverheatGame').then((mod) => mod.OverheatGame),
+  { ssr: false, loading: loading3d('bg-[#1b2a3a]') },
 );
 
 /**
