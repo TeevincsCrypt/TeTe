@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { GameGlyph } from '@/components/arcade/GameGlyph';
+import { GameArt } from '@/components/arcade/GameArt';
 import { GameOverPopup } from '@/components/arcade/GameOverPopup';
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, CrownIcon } from '@/components/shell/icons';
 import { ApiError, claimGameReward, fetchStatus } from '@/lib/api/client';
@@ -224,7 +224,9 @@ export default function ArcadePage() {
         </p>
       </div>
 
-      <ul className="mt-5 divide-y divide-line">
+      {/* Cover art rather than a row of icons: the key art carries each game's
+          own title, so the label row sits under it instead of over the top. */}
+      <ul className="mt-5 space-y-4">
         {GAMES.map((game) => {
           const best = progress.best[game.id];
           return (
@@ -232,29 +234,32 @@ export default function ArcadePage() {
               <button
                 type="button"
                 onClick={() => setActive(game.id)}
-                className="flex w-full items-center gap-4 py-4 text-left transition-opacity active:opacity-60"
+                className="block w-full text-left transition-transform duration-100 active:scale-[0.985]"
               >
-                <span
-                  aria-hidden
-                  className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-contrast text-accent"
-                >
-                  <GameGlyph id={game.id} className="size-6" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[1.0625rem] font-black tracking-tight">{game.name}</span>
-                  <span className="mt-0.5 block truncate text-[0.8125rem] text-muted">
-                    {game.tagline}
+                <GameArt
+                  id={game.id}
+                  className="aspect-[16/9] w-full ring-1 ring-ink/10"
+                  rounded="rounded-[1.25rem]"
+                />
+                <span className="mt-2.5 flex items-center gap-3 px-0.5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[1.0625rem] font-black tracking-tight">
+                      {game.name}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[0.8125rem] text-muted">
+                      {game.tagline}
+                    </span>
                   </span>
-                </span>
-                <span className="shrink-0 text-right">
-                  <span className="block text-[0.625rem] font-bold uppercase tracking-[0.12em] text-faint">
-                    Best
+                  <span className="shrink-0 text-right">
+                    <span className="block text-[0.625rem] font-bold uppercase tracking-[0.12em] text-faint">
+                      Best
+                    </span>
+                    <span className="block text-[0.9375rem] font-black tabular">
+                      {best === undefined ? '—' : `${best}${game.unit}`}
+                    </span>
                   </span>
-                  <span className="block text-[0.9375rem] font-black tabular">
-                    {best === undefined ? '—' : `${best}${game.unit}`}
-                  </span>
+                  <ChevronRightIcon className="size-4 shrink-0 text-faint" />
                 </span>
-                <ChevronRightIcon className="size-4 shrink-0 text-faint" />
               </button>
             </li>
           );
