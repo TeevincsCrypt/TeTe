@@ -209,6 +209,9 @@ export function updatePitchScene(
   // Arms out: a keeper reading a shot, and it makes his width obvious.
   scene.keeper.armL.rotation.z = 1.1;
   scene.keeper.armR.rotation.z = -1.1;
+  // Spread wide to fill the goal: arms out means elbows locked, not resting.
+  scene.keeper.elbowL.rotation.x = 0;
+  scene.keeper.elbowR.rotation.x = 0;
 
   let wallI = 0;
   for (const defender of s.wall) {

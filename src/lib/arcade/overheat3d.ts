@@ -206,11 +206,18 @@ export function createOverheatScene(
 
   const rider = buildCharacter(look);
   rider.group.scale.setScalar(0.62);
-  // Seated: thighs forward, torso tipped over the bars.
+  // Seated: thighs forward off the hips, shins folded back under them, arms
+  // reaching down to the bars with a bend at the elbow.
   rider.legL.rotation.x = -1.5;
   rider.legR.rotation.x = -1.5;
+  rider.kneeL.rotation.x = -1.15;
+  rider.kneeR.rotation.x = -1.15;
   rider.armL.rotation.x = -1.1;
   rider.armR.rotation.x = -1.1;
+  rider.elbowL.rotation.x = 0.42;
+  rider.elbowR.rotation.x = 0.42;
+  // Tipped over the bars rather than sitting bolt upright.
+  rider.spine.rotation.x = 0.26;
   bike.group.add(rider.group);
   rider.group.position.set(-0.35, 0.5, 0);
   rider.group.rotation.y = -Math.PI / 2;

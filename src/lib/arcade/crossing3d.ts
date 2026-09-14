@@ -266,12 +266,19 @@ export function updateCrossingScene(scene: CrossingScene, s: CrossingFrameState)
   const lift = Math.sin(Math.max(0, Math.min(1, s.hop)) * Math.PI) * 0.55;
   player.group.position.set(across(s.col), lift, depth(s.row));
   player.group.rotation.y = Math.PI; // facing away, up the board
-  // Legs tuck on the way up rather than staying planted.
+  // Legs tuck on the way up rather than staying planted: hips come forward and
+  // the knees fold under, which is what a hop actually looks like.
   const tuck = lift * 1.2;
   player.legL.rotation.x = tuck;
   player.legR.rotation.x = tuck;
+  player.kneeL.rotation.x = -0.06 - tuck * 1.5;
+  player.kneeR.rotation.x = -0.06 - tuck * 1.5;
   player.armL.rotation.x = -tuck * 1.4;
   player.armR.rotation.x = -tuck * 1.4;
+  player.elbowL.rotation.x = 0.16 + tuck * 0.7;
+  player.elbowR.rotation.x = 0.16 + tuck * 0.7;
+  // A hop lifts the whole body, not just the feet.
+  player.spine.position.y = lift * 0.06;
   if (s.over) player.group.rotation.z = 1.4;
   else player.group.rotation.z = 0;
 
