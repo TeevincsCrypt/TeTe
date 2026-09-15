@@ -2,6 +2,16 @@ import 'server-only';
 
 import type { GameId } from '@/lib/arcade/games';
 import { compactAddress } from '@/lib/nimiq/address';
+/**
+ * What a coin pays and what a hazard costs.
+ *
+ * Imported rather than redeclared. The device shows a running estimate from
+ * the same two numbers, so a second copy here would be a promise that the
+ * figure a player watched climb is the figure they get credited — held
+ * together by nothing but a comment. One source, and the estimate cannot
+ * disagree with the payment.
+ */
+import { COIN_LUNA, HAZARD_LUNA } from '@/lib/wallet/earnings';
 
 import { get, set } from './store';
 
@@ -48,11 +58,6 @@ const RATE_LUNA: Record<GameId, number> = {
   overheat: 100, // 0.001 NIM per metre
   alley: 600, // 0.006 NIM per opponent floored
 };
-
-/** Each coin picked up in any game. */
-const COIN_LUNA = 20_000; // 0.2 NIM
-/** Each hazard hit. Still costs more than a coin earns, so a trade never pays. */
-const HAZARD_LUNA = 50_000; // 0.5 NIM
 
 /**
  * Sanity ceilings, not skill ceilings — set far past any real run so a

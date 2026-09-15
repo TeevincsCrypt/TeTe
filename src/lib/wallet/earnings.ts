@@ -60,18 +60,25 @@ export const RATE_LUNA = {
 } as const;
 
 /**
- * A coin picked up mid-run. Worth more than distance, on purpose: going for a
- * coin costs a line, and that choice is where the reward should sit.
- * Must match COIN_LUNA in lib/server/rewards.ts, which is authoritative.
+ * A coin picked up mid-run. Worth more than a single unit of distance, on
+ * purpose: going for a coin costs a line, and that choice is where the
+ * reward should sit.
+ *
+ * This is the authoritative figure — lib/server/rewards imports it rather
+ * than holding a second copy. It used to be duplicated on both sides with a
+ * comment on each asking the other to be kept in step, which is a promise
+ * nothing enforced: the first change to one of them would have shown players
+ * an estimate the server then declined to pay.
  */
-export const COIN_LUNA = 20_000; // 0.2 NIM
+export const COIN_LUNA = 5_000; // 0.05 NIM
 
 /**
- * A hazard hit mid-run. Costs more than a coin earns, so a miss is never
- * worth trading for a coin's reward. Must match HAZARD_LUNA in
- * lib/server/rewards.ts, which is authoritative.
+ * A hazard hit mid-run.
+ *
+ * Deliberately costs several times what a coin earns, so taking a hit to
+ * reach one is never a trade worth making. Authoritative, same as above.
  */
-export const HAZARD_LUNA = 50_000; // 0.5 NIM
+export const HAZARD_LUNA = 20_000; // 0.2 NIM
 
 export function readEarnings(): Earning[] {
   if (typeof window === 'undefined') return [];
