@@ -70,13 +70,27 @@ const MAX_SCORE: Record<GameId, number> = {
   alley: 100_000,
 };
 /**
- * A real round collects a handful of coins, not a thousand. The old ceiling
- * of 1,000 was set as "far past any real run" — but at 0.2 NIM a coin, it
- * priced a single fabricated report at 200 NIM, which was the entire daily
- * cap in one request. A sanity ceiling has to be cheap to hit the wrong way,
- * not just generous to the right way.
+ * The most coins a run of this length could plausibly have collected.
+ *
+ * A flat ceiling was the bug. Fifty coins is about what a Rush run of fifteen
+ * hundred metres picks up, so once rounds started paying for their full
+ * length, the better someone played the more certain they were to be refused
+ * — and refused outright, losing the distance they had actually run along
+ * with the coins. A player being punished for a long run is the exact
+ * opposite of what removing the per-round cap was for.
+ *
+ * A coin count is only ever implausible relative to the distance it was
+ * collected over, so the allowance grows with the run. The floor covers short
+ * rounds, where a dense patch of coins can outnumber the metres.
+ *
+ * Set far above what the games can even spawn: Rush is the densest and lays
+ * down roughly one coin every thirty units of track, which no player collects
+ * in full. This is a guard against garbage and overflow, not against skill —
+ * what actually bounds the treasury is the daily withdrawal cap.
  */
-const MAX_COINS = 50;
+function maxCoinsFor(score: number): number {
+  return 100 + Math.ceil(score / 25);
+}
 
 /** The daily check-in. Flat, not scaled by streak — the pool is finite. */
 const CHECK_IN_LUNA = 50_000; // 0.5 NIM
@@ -146,15 +160,30 @@ export async function creditGameReward(
   coins: number,
   hazards = 0,
 ): Promise<RewardResult> {
+  // Refused outright only for values that cannot come from playing at all:
+  // fractions, negatives, and scores past a ceiling no real run approaches.
   if (!Number.isInteger(score) || score < 0 || score > MAX_SCORE[gameId]) {
     return { ok: false, error: 'That score is not a real run.' };
   }
-  if (!Number.isInteger(coins) || coins < 0 || coins > MAX_COINS) {
+  if (!Number.isInteger(coins) || coins < 0) {
     return { ok: false, error: 'That coin count is not a real run.' };
   }
-  if (!Number.isInteger(hazards) || hazards < 0 || hazards > MAX_COINS) {
+  if (!Number.isInteger(hazards) || hazards < 0) {
     return { ok: false, error: 'That hazard count is not a real run.' };
   }
+
+  /*
+   * Everything else is clamped rather than refused.
+   *
+   * A bound that is too tight and refuses costs a real player their whole
+   * round; a bound that is too tight and clamps costs them the part above it
+   * and pays the rest. Those are not close to equivalent when the bound turns
+   * out to be wrong — and this one was. Clamping also gives up nothing
+   * against a fabricated report, which ends up worth exactly the ceiling
+   * either way.
+   */
+  const paidCoins = Math.min(coins, maxCoinsFor(score));
+  const paidHazards = Math.min(hazards, maxCoinsFor(score));
 
   const last = (await get<number>(lastKey(address))) ?? 0;
   if (Date.now() - last < COOLDOWN_MS) {
@@ -169,7 +198,7 @@ export async function creditGameReward(
   // what it ran.
   const credited = Math.max(
     0,
-    Math.round(score * RATE_LUNA[gameId]) + coins * COIN_LUNA - hazards * HAZARD_LUNA,
+    Math.round(score * RATE_LUNA[gameId]) + paidCoins * COIN_LUNA - paidHazards * HAZARD_LUNA,
   );
 
   const current = (await get<number>(rewardsBalanceKey(address))) ?? 0;
