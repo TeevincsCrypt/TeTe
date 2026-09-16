@@ -48,6 +48,16 @@ export const CRON_SECRET = req('CRON_SECRET');
 export const hasTreasury = Boolean(RPC_URL && TREASURY_ADDRESS && TREASURY_PASSPHRASE);
 export const hasDurableStore = Boolean(KV_URL && KV_TOKEN);
 export const hasAdmin = Boolean(ADMIN_TOKEN && hasDurableStore);
+
+/**
+ * Stop paying out, now, without waiting for a code change.
+ *
+ * Set WITHDRAWALS_PAUSED to any non-empty value and every payout from the
+ * rewards ledger refuses. Balances are untouched — nothing is lost, it just
+ * stops leaving. Exists because during an incident the expensive thing is the
+ * minutes spent deciding how to stop the bleeding.
+ */
+export const withdrawalsPaused = Boolean(req('WITHDRAWALS_PAUSED'));
 export const hasCron = Boolean(CRON_SECRET && hasDurableStore && hasTreasury);
 /**
  * A node to read the chain with. Enough to look up a balance, which is why it

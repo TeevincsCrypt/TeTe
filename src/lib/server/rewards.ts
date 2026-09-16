@@ -13,7 +13,7 @@ import { compactAddress } from '@/lib/nimiq/address';
  */
 import { COIN_LUNA, HAZARD_LUNA } from '@/lib/wallet/earnings';
 
-import { get, set } from './store';
+import { get, increment, set } from './store';
 
 /**
  * Crediting real, withdrawable NIM for arcade play.
@@ -122,8 +122,17 @@ const lastKey = (address: string) => `rewards:last:${compactAddress(address)}`;
  */
 const dailyKey = (address: string) => `rewards:daily:${compactAddress(address)}`;
 const streakKey = (address: string) => `rewards:streak:${compactAddress(address)}`;
-/** What has left the treasury to this address today, as a DailyTotal. */
-const withdrawnKey = (address: string) => `rewards:withdrawn:${compactAddress(address)}`;
+/**
+ * What has left the treasury to this address today.
+ *
+ * Keyed by day and holding a bare number, rather than one key holding a
+ * `{ date, luna }` record. Two reasons, both about the same thing: a bare
+ * number can be incremented atomically, which a record cannot, and a key per
+ * day rolls over on its own instead of needing a read to notice the date
+ * changed and reset it.
+ */
+const withdrawnKey = (address: string, day: string) =>
+  `rewards:withdrawn:${compactAddress(address)}:${day}`;
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -139,23 +148,44 @@ function yesterday(): string {
  * Separate from `dailyKey`, which counts what was *earned*. Earning is
  * uncapped; leaving is not, and conflating the two would mean a day of play
  * spent the day's withdrawal allowance without a single NIM having moved.
+ *
+ * For display only. Never decide a withdrawal from this — read it, decide,
+ * and write, and two requests racing each other both see room that only one
+ * of them can actually have. Use `reserveWithdrawal`.
  */
 export async function withdrawnToday(address: string): Promise<number> {
-  const stored = await get<DailyTotal>(withdrawnKey(address));
-  return stored?.date === today() ? stored.luna : 0;
+  return (await get<number>(withdrawnKey(address, today()))) ?? 0;
 }
 
 /**
- * Move this address's withdrawn-today total by `luna`.
+ * Claim `luna` of today's withdrawal allowance for this address.
  *
- * Positive to book a payout, negative to give the allowance back when one
- * fails. Clamped at zero so a double rollback can never hand out extra
- * allowance, and stamped with today's date on every write so a stale record
- * from a previous day is replaced rather than added to.
+ * The check and the claim are one atomic step, which is the whole point. The
+ * previous version read the day's total, decided there was room, and wrote
+ * the new total — three operations that concurrent requests interleave
+ * happily, so a single address could fire N withdrawals at once and have
+ * every one of them pass a cap that only one should have. On serverless,
+ * where invocations genuinely run in parallel, that is not a rare race; it is
+ * the obvious way to attack this route.
+ *
+ * Incrementing first and standing the claim down if it overshot means the
+ * loser of a race sees the winner's total and refuses, every time.
  */
-export async function noteWithdrawal(address: string, luna: number): Promise<void> {
-  const already = await withdrawnToday(address);
-  await set(withdrawnKey(address), { date: today(), luna: Math.max(0, already + luna) });
+export async function reserveWithdrawal(
+  address: string,
+  luna: number,
+  capLuna: number,
+): Promise<{ ok: true } | { ok: false; alreadyToday: number }> {
+  const key = withdrawnKey(address, today());
+  const total = await increment(key, luna);
+  if (total <= capLuna) return { ok: true };
+  await increment(key, -luna);
+  return { ok: false, alreadyToday: Math.max(0, total - luna) };
+}
+
+/** Hand back an allowance claim whose payout did not go through. */
+export async function releaseWithdrawal(address: string, luna: number): Promise<void> {
+  await increment(withdrawnKey(address, today()), -luna);
 }
 
 export async function creditGameReward(
@@ -206,13 +236,13 @@ export async function creditGameReward(
     Math.round(score * RATE_LUNA[gameId]) + paidCoins * COIN_LUNA - paidHazards * HAZARD_LUNA,
   );
 
-  const current = (await get<number>(rewardsBalanceKey(address))) ?? 0;
-  const balance = current + credited;
+  // Atomic, like every other balance move: two rounds landing together must
+  // both count, not overwrite each other.
+  const balance = await increment(rewardsBalanceKey(address), credited);
 
   await Promise.all([
     set(lastKey(address), Date.now()),
     set(dailyKey(address), { date: day.date, luna: day.luna + credited }),
-    set(rewardsBalanceKey(address), balance),
   ]);
 
   return { ok: true, credited, balance };
@@ -252,13 +282,11 @@ export async function claimStreakReward(address: string): Promise<StreakResult> 
   const day: DailyTotal = storedDay?.date === today() ? storedDay : { date: today(), luna: 0 };
 
   const credited = CHECK_IN_LUNA;
-  const current = (await get<number>(rewardsBalanceKey(address))) ?? 0;
-  const balance = current + credited;
+  const balance = await increment(rewardsBalanceKey(address), credited);
 
   await Promise.all([
     set(streakKey(address), { date: today(), streak } satisfies StreakRecord),
     set(dailyKey(address), { date: day.date, luna: day.luna + credited }),
-    set(rewardsBalanceKey(address), balance),
   ]);
 
   return { ok: true, credited, balance, streak };
@@ -305,25 +333,30 @@ export async function tip(from: string, to: string, luna: number): Promise<TipRe
     return { ok: false, error: 'You cannot tip yourself.', status: 400 };
   }
 
-  const balance = (await get<number>(rewardsBalanceKey(from))) ?? 0;
-  if (balance < luna) {
+  /*
+   * Debit atomically, then ask whether the debit was allowed.
+   *
+   * Reading the balance, checking it covers the tip, and writing the
+   * remainder is three steps, and two concurrent tips of the same balance
+   * both pass the check before either writes — so both credit the recipient
+   * and the ledger gains NIM that nobody earned. Minted ledger NIM is a
+   * treasury drain with a delay on it, because it is withdrawable like any
+   * other balance.
+   */
+  const remaining = await increment(rewardsBalanceKey(from), -luna);
+  if (remaining < 0) {
+    await increment(rewardsBalanceKey(from), luna);
     return {
       ok: false,
-      error: `You have ${balance / 100_000} NIM to tip with.`,
+      error: `You have ${Math.max(0, remaining + luna) / 100_000} NIM to tip with.`,
       status: 409,
     };
   }
 
-  // Debit first: crediting first and failing here would mint NIM out of a
-  // dropped request. Debiting first can at worst lose a tip, which is
-  // recoverable; minting is not.
-  const remaining = balance - luna;
-  await set(rewardsBalanceKey(from), remaining);
   try {
-    const theirs = (await get<number>(rewardsBalanceKey(to))) ?? 0;
-    await set(rewardsBalanceKey(to), theirs + luna);
+    await increment(rewardsBalanceKey(to), luna);
   } catch (cause: unknown) {
-    await set(rewardsBalanceKey(from), balance);
+    await increment(rewardsBalanceKey(from), luna);
     throw cause;
   }
 
