@@ -47,6 +47,27 @@ export async function set(key: string, value: unknown): Promise<void> {
   else memory.set(key, raw);
 }
 
+/**
+ * Add to a number held at `key`, atomically, and return the new total.
+ *
+ * The one operation that `get`-then-`set` cannot express safely. Two
+ * concurrent requests that both read a value, both decide it leaves room, and
+ * both write, will both proceed — and on serverless, concurrent is the normal
+ * case, not the rare one. Anything guarding money has to go through here.
+ *
+ * Works on values written by `set`, because a number round-trips through
+ * JSON.stringify as a bare integer string, which is exactly what Redis counts
+ * on. Reading one back with `get` still parses correctly.
+ */
+export async function increment(key: string, by: number): Promise<number> {
+  if (!Number.isInteger(by)) throw new Error('increment expects an integer');
+  if (hasDurableStore) return Number(await kv(['INCRBY', key, by]));
+  const current = Number(memory.get(key) ?? 0);
+  const next = current + by;
+  memory.set(key, JSON.stringify(next));
+  return next;
+}
+
 /** Set only if absent. Used to claim a username without a race. */
 export async function setIfAbsent(key: string, value: unknown): Promise<boolean> {
   const raw = JSON.stringify(value);
