@@ -21,15 +21,34 @@ interface State {
   /** Height above the track while jumping, in metres of arc. */
   air: number; airV: number; roll: number;
   things: RushThing[]; spawnZ: number;
+  /** Seconds of actual running, which is what paces the coins. */
+  elapsed: number;
+  /** The `elapsed` reading at which another coin may appear. */
+  nextCoinAt: number;
   coins: number; hazards: number; flash: number;
   stride: number; swipeX: number; swipeY: number; swiped: boolean;
 }
 
+/**
+ * How rare a coin is, in seconds of running.
+ *
+ * Paced by time rather than by distance or by a per-spawn chance, because
+ * neither of those holds still. The runner accelerates from 15 to 38 units a
+ * second and the track spawns every ~17 units, so the number of chances per
+ * second nearly triples over a run — a fixed probability would quietly make
+ * coins commoner the longer someone played, which is the wrong direction for
+ * something deliberately scarce.
+ */
+const COIN_GAP_MIN = 22;
+const COIN_GAP_SPREAD = 10;
+
 const START: Omit<State, 'started'> = {
   over: false, distance: 0, speed: 15, lane: 0, laneShift: 0,
   air: 0, airV: 0, roll: 0, things: [], spawnZ: 40,
+  elapsed: 0, nextCoinAt: COIN_GAP_MIN,
   coins: 0, hazards: 0, flash: 0, stride: 0, swipeX: 0, swipeY: 0, swiped: false,
 };
+
 
 /** How far ahead the track is populated, in metres. */
 const HORIZON = 60;
@@ -97,10 +116,17 @@ export function RushGame({
           s.things.push({ z: s.spawnZ, lane, kind, gone: false });
         }
       } else if (roll < 0.68) {
-        // A short run of coins down one lane — the reason to leave a safe line.
-        const lane = lanes[Math.floor(Math.random() * 3)] ?? 0;
-        for (let i = 0; i < 3; i += 1) {
-          s.things.push({ z: s.spawnZ + i * 2.4, lane, kind: 'coin', gone: false });
+        /*
+         * One coin, and only if one is due. This slot used to lay down a run
+         * of three every time it came up, which at this spawn rate is several
+         * a second — the opposite of scarce. When no coin is due the slot
+         * simply leaves the track clear, so the pacing of obstacles and
+         * hazards around it is untouched.
+         */
+        if (s.elapsed >= s.nextCoinAt) {
+          const lane = lanes[Math.floor(Math.random() * 3)] ?? 0;
+          s.things.push({ z: s.spawnZ, lane, kind: 'coin', gone: false });
+          s.nextCoinAt = s.elapsed + COIN_GAP_MIN + Math.random() * COIN_GAP_SPREAD;
         }
       } else if (roll < 0.8) {
         const lane = lanes[Math.floor(Math.random() * 3)] ?? 0;
@@ -154,6 +180,7 @@ export function RushGame({
       // ---- movement --------------------------------------------------------
       s.speed = Math.min(38, 15 + s.distance * 0.012);
       s.distance += s.speed * dt;
+      s.elapsed += dt;
       s.stride += dt * s.speed * 0.8;
 
       s.laneShift += (s.lane - s.laneShift) * Math.min(1, dt * 12);
