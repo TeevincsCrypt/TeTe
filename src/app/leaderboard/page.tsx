@@ -100,7 +100,7 @@ export default function LeaderboardPage() {
         <h1 className="display mt-3 text-[2.25rem]">Rankings</h1>
         <p className="mt-2 max-w-[20rem] text-[0.875rem] leading-relaxed text-muted">
           Ranked by real NIM earned. Challenges, arcade rounds and daily check-ins all count
-          toward both boards at once.
+          toward both boards at once. Claim a username to appear — earning works either way.
         </p>
       </header>
 
@@ -126,7 +126,7 @@ export default function LeaderboardPage() {
           </p>
           <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-muted">
             Win a challenge, play a round in the arcade or check in — any of them puts you on
-            the board.
+            the board, once you have claimed a username.
           </p>
         </Sticker>
       ) : (
@@ -173,7 +173,17 @@ export default function LeaderboardPage() {
           : "Today's board is bragging rights only — the automatic prize is on the weekly board."}
       </PhaseNote>
 
-      <ButtonLink href="/create" size="lg">
+      <PhaseNote>
+        Only players with a username are ranked. Anyone can make a wallet address, so the board
+        would otherwise rank whoever can make the most of them. Your earnings are never affected
+        — an unnamed player still gets every NIM they earn and can withdraw it as normal.
+      </PhaseNote>
+
+      <ButtonLink href="/profile" size="lg">
+        Claim your username
+      </ButtonLink>
+
+      <ButtonLink href="/create" variant="outline" size="lg">
         Climb the board
       </ButtonLink>
     </div>

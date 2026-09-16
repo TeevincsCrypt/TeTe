@@ -24,6 +24,11 @@ import { payout } from './treasury';
  * left the treasury yet. Crediting one would put a payout on the board that
  * has not happened.
  *
+ * Only players who have claimed a username appear. An address costs nothing
+ * to create, so a board keyed on addresses alone ranks whoever can run a
+ * script — see `creditLeaderboard` for the full reasoning. Earning is not
+ * affected by this in any way; only the ranking is.
+ *
  * Each period's table is one JSON object, read, updated and written back —
  * simple, and good enough at TeTe's current scale. A rare lost increment
  * from two credits landing in the same instant costs a fraction of a
@@ -161,6 +166,25 @@ export async function creditLeaderboard(
   source: LeaderboardSource,
 ): Promise<void> {
   if (!Number.isFinite(luna) || luna <= 0) return;
+  /*
+   * A username is the price of admission to the board.
+   *
+   * Addresses are free to generate, so a ranking keyed on them alone ranks
+   * whoever can run a script, not whoever plays best — which is exactly what
+   * happened: farmed addresses filled the whole top ten. A username has to be
+   * claimed, is one per address, and is unique, so filling ten places now
+   * means claiming ten names that everyone can see.
+   *
+   * This is a barrier, not a wall. Claiming a name is cheap and a determined
+   * farmer will claim several. What it buys is that farming stops being
+   * invisible: the names are right there on the board, and stripping them is
+   * a single call to /api/admin/leaderboard.
+   *
+   * Earning is completely unaffected. A player with no name still gets every
+   * NIM they earn, credited and withdrawable exactly as before — the board is
+   * the only thing they are kept off.
+   */
+  if (!username) return;
   try {
     await Promise.all([
       addToTable('daily', dailyKey(), address, username, luna, source),
@@ -225,20 +249,36 @@ async function addToTable(
   await set(tableKey(period, key), table);
 }
 
-/** The top entries for one period, highest total first. */
-export async function topEntries(period: LeaderboardPeriod, key: string, limit = 10): Promise<LeaderboardEntry[]> {
+/**
+ * The ranked board for one period: named players only, best first.
+ *
+ * The same filter has to apply to the standings, to a player's own rank and
+ * to who gets paid, so all three read it from here rather than each sorting
+ * the table themselves and risking a disagreement about who is on the board.
+ *
+ * Filtering on read, and not only on write, is deliberate. It means entries
+ * banked before a username was required stop appearing the moment this
+ * ships, so a board already full of anonymous farmed addresses clears itself
+ * without anyone having to run a reset against it.
+ */
+async function ranked(period: LeaderboardPeriod, key: string): Promise<LeaderboardEntry[]> {
   const table = (await get<LeaderboardTable>(tableKey(period, key))) ?? {};
   return Object.values(table)
-    .sort((a, b) => b.luna - a.luna)
-    .slice(0, limit);
+    .filter((entry) => Boolean(entry.username))
+    .sort((a, b) => b.luna - a.luna);
 }
 
-/** Where `address` currently stands in a period — 1-based, or null if they have not scored yet. */
+/** The top entries for one period, highest total first. */
+export async function topEntries(period: LeaderboardPeriod, key: string, limit = 10): Promise<LeaderboardEntry[]> {
+  return (await ranked(period, key)).slice(0, limit);
+}
+
+/** Where `address` currently stands in a period — 1-based, or null if they are not on the board. */
 export async function rankOf(period: LeaderboardPeriod, key: string, address: string): Promise<number | null> {
-  const table = (await get<LeaderboardTable>(tableKey(period, key))) ?? {};
   const compact = compactAddress(address);
-  const ranked = Object.values(table).sort((a, b) => b.luna - a.luna);
-  const index = ranked.findIndex((entry) => compactAddress(entry.address) === compact);
+  const index = (await ranked(period, key)).findIndex(
+    (entry) => compactAddress(entry.address) === compact,
+  );
   return index === -1 ? null : index + 1;
 }
 
