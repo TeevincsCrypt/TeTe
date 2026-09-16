@@ -4,7 +4,7 @@ import { compactAddress } from '@/lib/nimiq/address';
 
 import { recordActivity } from './activity';
 import { lookupAddress } from './players';
-import { get, set } from './store';
+import { del, get, set } from './store';
 import { payout } from './treasury';
 
 /**
@@ -95,6 +95,55 @@ export function previousWeeklyKey(at: number = Date.now()): string {
 
 function tableKey(period: LeaderboardPeriod, key: string): string {
   return `leaderboard:${period}:${key}`;
+}
+
+/**
+ * Wipe the current board clean, for the current UTC day and/or week.
+ *
+ * Meant for exactly one situation: the board is dominated by farmed
+ * accounts rather than real play, and a fresh start is more useful than a
+ * ranking nobody trusts. This clears the whole table for the period, not
+ * just the farmer — there is no way to tell a fabricated total from a real
+ * one by looking at the number alone, so a full reset is the honest move
+ * rather than pretending to be surgical about it.
+ *
+ * Two things this does NOT do, worth being explicit about: it does not touch
+ * any player's reward balance — resetting the board takes nothing back from
+ * anyone, it only clears where they show up on a ranking. And it does not
+ * touch a week that has already been paid; `payWeeklyPrizes` is keyed by its
+ * own `paidKey` and is untouched by this.
+ *
+ * The reason this matters beyond cosmetics: the weekly top 3 are paid real
+ * NIM automatically when the week ends. Left alone, farmed accounts sitting
+ * at the top would collect that prize. Resetting before the week's cron runs
+ * is what keeps it from going out.
+ */
+export async function resetLeaderboard(
+  period: LeaderboardPeriod,
+  at: number = Date.now(),
+): Promise<void> {
+  const key = period === 'weekly' ? weeklyKey(at) : dailyKey(at);
+  await del(tableKey(period, key));
+}
+
+/**
+ * Remove one address's entry from the current board, leaving everyone else's
+ * standing untouched.
+ *
+ * The narrower alternative to `resetLeaderboard`, for when the farmer is
+ * identifiable and the rest of the board is real — strike the one row rather
+ * than clearing the table for every player on it.
+ */
+export async function removeFromLeaderboard(
+  period: LeaderboardPeriod,
+  address: string,
+  at: number = Date.now(),
+): Promise<void> {
+  const key = period === 'weekly' ? weeklyKey(at) : dailyKey(at);
+  const fullKey = tableKey(period, key);
+  const table = (await get<LeaderboardTable>(fullKey)) ?? {};
+  delete table[compactAddress(address)];
+  await set(fullKey, table);
 }
 
 /**
