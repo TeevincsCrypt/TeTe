@@ -243,7 +243,7 @@ export default function ArcadePage() {
 
       <PhaseNote className="mt-6">
         {rewardsReady
-          ? 'Every finished round is banked to your withdrawable balance automatically. Coins are worth 0.05 NIM each, hazards cost you 0.2, and your score itself earns as it climbs — the further you get, the more the round pays, with no ceiling on a round or on a day. Withdrawals are capped at 100 NIM a day; anything above that waits on your balance for tomorrow.'
+          ? 'Every finished round is banked to your withdrawable balance automatically. Coins are worth 0.001 NIM each, hazards cost you 0.2, and your score itself earns as it climbs — the further you get, the more the round pays, with no ceiling on a round or on a day. Withdrawals are capped at 100 NIM a day; anything above that waits on your balance for tomorrow.'
           : 'Rewards are recorded on this device and are not yet payable. TeTe can only ask your wallet to send funds, never send funds to you, so paying these out needs a server that is not configured on this deployment.'}
       </PhaseNote>
     </div>

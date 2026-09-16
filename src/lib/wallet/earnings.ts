@@ -60,9 +60,13 @@ export const RATE_LUNA = {
 } as const;
 
 /**
- * A coin picked up mid-run. Worth more than a single unit of distance, on
- * purpose: going for a coin costs a line, and that choice is where the
- * reward should sit.
+ * A coin picked up mid-run.
+ *
+ * Deliberately tiny. Coins are the easiest part of a round for a fabricated
+ * report to inflate — a claimed count costs nothing to invent, where claimed
+ * distance at least has to stay inside a per-game ceiling — so pricing them
+ * near zero takes most of the value out of lying about them. A run now earns
+ * from how far it got, and coins are flavour on top.
  *
  * This is the authoritative figure — lib/server/rewards imports it rather
  * than holding a second copy. It used to be duplicated on both sides with a
@@ -70,7 +74,7 @@ export const RATE_LUNA = {
  * nothing enforced: the first change to one of them would have shown players
  * an estimate the server then declined to pay.
  */
-export const COIN_LUNA = 5_000; // 0.05 NIM
+export const COIN_LUNA = 100; // 0.001 NIM
 
 /**
  * A hazard hit mid-run.
