@@ -28,20 +28,24 @@ import { get, increment, set } from './store';
  *   - score and coins are sanity-bounded, which rejects garbage and overflow
  *     rather than skilled play (a real run never comes close to these)
  *   - submissions are throttled per address, so nobody out-paces a real round
+ *   - a single round credits at most MAX_ROUND_LUNA, however long it claims
+ *     to have gone on
  *
- * Earning is otherwise uncapped, per round and per day. A round pays for
- * exactly what it did: twice the distance is twice the NIM, all the way up.
- * There was a 1 NIM per-round ceiling here and it was a mistake — past about
- * a thousand metres of Drift, or two hundred rows of Crossing, playing better
- * paid nothing at all, which is the opposite of what an arcade is for.
+ * Below that ceiling a round pays for exactly what it did: twice the distance
+ * is twice the NIM. There was a 1 NIM ceiling here once and it was far too
+ * low — past about a thousand metres of Drift, playing better paid nothing at
+ * all, which is the opposite of what an arcade is for. Twenty NIM sits some
+ * twenty times past a strong run, so the scaling a player actually feels is
+ * untouched and only a run that never ends meets it.
  *
- * That ceiling used to be the load-bearing guard against a crafted report,
- * back when a credited balance could be withdrawn the moment it landed. It is
- * not needed for that any more: what actually leaves the treasury is bounded
- * at the withdrawal, at 100 NIM per address per UTC day, however large a
- * balance gets — see lib/wallet/withdrawal. A fabricated report can still
- * inflate a ledger entry, but it can no longer turn into NIM any faster than
- * an honest one.
+ * Earning stays uncapped per day. Play as many rounds as you like; each one
+ * is simply worth at most one round's worth.
+ *
+ * None of this is what protects the treasury. What actually leaves is bounded
+ * at the withdrawal — see lib/wallet/withdrawal — and that is the number that
+ * decides how fast real money can be taken out. The per-round ceiling bounds
+ * the ledger instead: it keeps a farmed balance from ballooning into a
+ * liability that is owed whether or not it was earned.
  *
  * What that trade costs, stated plainly: the ledger is now a liability that
  * can run ahead of what was really earned, and the daily withdrawal cap is
@@ -96,6 +100,27 @@ const MAX_SCORE: Record<GameId, number> = {
 function maxCoinsFor(score: number): number {
   return 100 + Math.ceil(score / 25);
 }
+
+/**
+ * The most one round can ever credit, whatever it reports.
+ *
+ * A run is worth what it ran, right up to here — twenty NIM is about twenty
+ * kilometres of Drift or Rush, four thousand rows of Crossing, four hundred
+ * goals in Pitch. No real round comes close, so this is not a skill ceiling
+ * and a genuinely good player will never meet it.
+ *
+ * What it does bound is a run that never ends. Scores are reported by the
+ * client and nothing here re-plays them, so "distance travelled" is a number
+ * a script can hold down for hours. Before this, one report could be worth
+ * hundreds of NIM on its own; now the answer to a run left going for days is
+ * the same twenty as a very good hour.
+ *
+ * This bounds the ledger, not the treasury. What actually leaves is capped at
+ * the withdrawal — see lib/wallet/withdrawal — and that is still the number
+ * that decides how fast anyone can take real money out. This keeps a farmed
+ * balance from ballooning into a liability that is owed either way.
+ */
+const MAX_ROUND_LUNA = 20 * 100_000; // 20 NIM
 
 /** The daily check-in. Flat, not scaled by streak — the pool is finite. */
 const CHECK_IN_LUNA = 50_000; // 0.5 NIM
@@ -229,12 +254,13 @@ export async function creditGameReward(
   const day: DailyTotal = stored?.date === today() ? stored : { date: today(), luna: 0 };
 
   // Hazards can take a round below zero; that costs the round, never the
-  // balance already earned. Nothing clamps the result: a long run is worth
-  // what it ran.
-  const credited = Math.max(
+  // balance already earned. A run is then worth what it ran, up to the
+  // per-round ceiling — see MAX_ROUND_LUNA for why there is one again.
+  const earned = Math.max(
     0,
     Math.round(score * RATE_LUNA[gameId]) + paidCoins * COIN_LUNA - paidHazards * HAZARD_LUNA,
   );
+  const credited = Math.min(earned, MAX_ROUND_LUNA);
 
   // Atomic, like every other balance move: two rounds landing together must
   // both count, not overwrite each other.
